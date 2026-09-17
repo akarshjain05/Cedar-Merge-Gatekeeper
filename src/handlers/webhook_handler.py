@@ -104,11 +104,13 @@ def handler(event, context):
 
     changed_path = "/unknown"
     for f in files:
-        if "/auth/" in f or "auth/" in f:
-            changed_path = f
+        normalized_f = f if f.startswith("/") else f"/{f}"
+        if normalized_f.startswith("/src/auth/"):
+            changed_path = normalized_f
             break
+            
     if changed_path == "/unknown" and files:
-        changed_path = files[0] 
+        changed_path = files[0] if files[0].startswith("/") else f"/{files[0]}"
 
     teams = team_repository.get_teams_for_user(sender)
     resource_id = f"{repo_name}#{pr_number}"
