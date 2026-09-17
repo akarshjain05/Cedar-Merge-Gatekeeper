@@ -1,0 +1,25 @@
+entity GitHubUser;
+
+entity PullRequest;
+
+action approvePR appliesTo {
+  principal: [GitHubUser],
+  resource: [PullRequest],
+  context: {
+    changedPath: String,
+    totalLinesChanged: Long,
+    prAuthor: GitHubUser,
+    activeTeams: Set<String>
+  }
+};
+
+action mergePR appliesTo {
+  principal: [GitHubUser],
+  resource: [PullRequest],
+  context: {
+    changedPath: String,
+    totalLinesChanged: Long,
+    prAuthor: GitHubUser,
+    activeTeams: Set<String>
+  }
+};

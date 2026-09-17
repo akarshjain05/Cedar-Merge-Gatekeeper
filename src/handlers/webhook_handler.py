@@ -1,0 +1,162 @@
+"""
+Lambda entry point: parses a GitHub webhook, gathers context,
+calls AVP to authorize a PR merge or approval, logs the decision,
+and updates the GitHub PR status via the github_client.
+"""
+import json
+import os
+import logging
+
+from . import avp_client, team_repository, github_client
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+
+import hmac
+import hashlib
+
+def verify_signature(event):
+    secret = github_client.get_webhook_secret().encode("utf-8")
+    signature_header = event.get("headers", {}).get("X-Hub-Signature-256", "")
+    if not signature_header:
+        return False
+        
+    body = event.get("body", "")
+    expected_signature = "sha256=" + hmac.new(secret, body.encode("utf-8"), hashlib.sha256).hexdigest()
+    
+    return hmac.compare_digest(expected_signature, signature_header)
+
+def handler(event, context):
+    logger.info(f"RAW_WEBHOOK_PAYLOAD: {json.dumps(event)}")
+    
+    # Phase 6: Verify Signature before processing
+    if not verify_signature(event):
+        return {"statusCode": 401, "body": "Unauthorized"}
+        
+    try:
+        body = json.loads(event.get("body", "{}"))
+    except json.JSONDecodeError:
+        return {"statusCode": 200, "body": "Ignored malformed JSON"}
+
+    # Handle GitHub Ping Event
+    if "zen" in body:
+        return {"statusCode": 200, "body": "pong"}
+
+    if "pull_request" not in body:
+        return {"statusCode": 200, "body": "Ignored event"}
+
+    pr = body["pull_request"]
+    
+    try:
+        repo_name = body["repository"]["full_name"]
+        pr_number = pr["number"]
+        sender = body.get("sender", {}).get("login", "")
+        author = pr["user"]["login"]
+        lines_changed = pr.get("additions", 0) + pr.get("deletions", 0)
+        head_sha = pr["head"]["sha"]
+    except KeyError:
+        return {"statusCode": 200, "body": "Ignored malformed PR payload"}
+
+    # 1. GitHub API Failure Resilience
+    try:
+        files = github_client.get_pr_changed_files(repo_name, pr_number)
+    except Exception as e:
+        logger.error(f"GITHUB_API_FAILURE: {e}")
+        reason = "⚠️ **Merge check degraded** — Unable to fetch changed files from GitHub due to API limits or errors."
+        _notify_github_neutral(repo_name, head_sha, pr_number, reason)
+        return {"statusCode": 200, "body": "Degraded - GitHub API Failure"}
+
+    changed_path = "/unknown"
+    for f in files:
+        if "/auth/" in f or "auth/" in f:
+            changed_path = f
+            break
+    if changed_path == "/unknown" and files:
+        changed_path = files[0] 
+
+    teams = team_repository.get_teams_for_user(sender)
+    resource_id = f"{repo_name}#{pr_number}"
+
+    # 2. AVP Failure Resilience
+    try:
+        result = avp_client.is_authorized(
+            policy_store_id=os.environ.get("POLICY_STORE_ID", "store"),
+            principal_id=sender,
+            action_id="approvePR",
+            resource_id=resource_id,
+            context={
+                "changedPath": {"string": changed_path},
+                "totalLinesChanged": {"long": lines_changed},
+                "prAuthor": {"entityIdentifier": {"entityType": "GitHubUser", "entityId": author}},
+                "activeTeams": {"set": [{"string": t} for t in teams]},
+            },
+        )
+        decision = "ALLOW" if result["allowed"] else "DENY"
+        policy_id = result['policy_ids'][0] if result.get('policy_ids') else "default-deny"
+        
+        if result["allowed"]:
+            reason = f"✅ **Merge check passed** — `{policy_id}` permitted this approval.\n`{sender}` is authorized to approve this PR."
+        else:
+            reason = f"🚫 **Merge check failed** — policy `{policy_id}` denied this request.\nAsk another reviewer to approve or check team permissions."
+            
+        decision_log = {
+            "principal": sender,
+            "action": "approvePR",
+            "resource": resource_id,
+            "verdict": decision,
+            "policyId": policy_id,
+            "reason": reason
+        }
+        
+        logger.info(json.dumps(decision_log))
+        
+        # Write directly to the fallback DynamoDB decisions table
+        try:
+            import boto3
+            import uuid
+            from datetime import datetime, timezone
+            
+            table_name = os.environ.get("DECISIONS_TABLE_NAME")
+            if table_name:
+                dynamodb = boto3.resource("dynamodb")
+                table = dynamodb.Table(table_name)
+                
+                decision_log["id"] = str(uuid.uuid4())
+                decision_log["timestamp"] = datetime.now(timezone.utc).isoformat()
+                
+                table.put_item(Item=decision_log)
+        except Exception as e:
+            logger.error(f"Failed to record decision to DB: {e}")
+        
+        # Update GitHub
+        github_client.set_check_run_status(repo_name, head_sha, result["allowed"], reason)
+        github_client.post_pr_comment(repo_name, pr_number, reason)
+
+    except Exception as e:
+        # AVP Failure Log specifically formatted for Dashboard distinct from ALLOW/DENY
+        logger.error(json.dumps({
+            "principal": sender,
+            "resource": resource_id,
+            "verdict": "NEUTRAL",
+            "error": str(e),
+            "reason": "AVP_UNREACHABLE"
+        }))
+        reason = "⚠️ **Merge check degraded** — Unable to reach AWS Verified Permissions. Please try again later or contact an administrator."
+        _notify_github_neutral(repo_name, head_sha, pr_number, reason)
+        return {"statusCode": 200, "body": "Degraded - AVP Failure"}
+
+    return {
+        "statusCode": 200,
+        "body": json.dumps({"decision": decision, "reason": reason}),
+    }
+
+def _notify_github_neutral(repo_name: str, head_sha: str, pr_number: int, reason: str):
+    try:
+        # We need to tell the github_client to send neutral. 
+        # For now, we will just post the comment. If github_client supports neutral, we call it.
+        # But our github_client.set_check_run_status only takes allowed (bool). We must update it.
+        github_client.set_check_run_neutral(repo_name, head_sha, reason)
+        github_client.post_pr_comment(repo_name, pr_number, reason)
+    except Exception:
+        logger.exception("Failed to notify GitHub of neutral status.")

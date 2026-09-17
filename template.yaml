@@ -1,0 +1,112 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Cedar-Based Merge Gatekeeper for CI/CD: a deployable Cedar + Verified Permissions +
+  Lambda authorization demo built around pull requests.
+
+  NOTE: loading the schema and policies into the policy store below
+  typically happens as a post-deploy step (AWS CLI or console), not
+  natively through this CFN resource -- see the Makefile's
+  `load-policies` target for the commands.
+
+Globals:
+  Function:
+    Timeout: 10
+    Runtime: python3.12
+    MemorySize: 256
+    Environment:
+      Variables:
+        MEMBERS_TABLE_NAME: !Ref MembersTable
+        POLICY_STORE_ID: !Ref GatekeeperPolicyStore
+        GITHUB_API_BASE_URL: "https://api.github.com"
+        GITHUB_TOKEN_SECRET_ARN: !Ref GitHubTokenSecret
+        GITHUB_WEBHOOK_SECRET_ARN: !Ref GitHubWebhookSecret
+
+Resources:
+
+  Api:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+
+  WebhookFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handlers.webhook_handler.handler
+      Events:
+        GitHubWebhook:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /webhook
+            Method: post
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref MembersTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DecisionsTable
+        - Statement:
+            - Effect: Allow
+              Action: secretsmanager:GetSecretValue
+              Resource: 
+                - !Ref GitHubTokenSecret
+                - !Ref GitHubWebhookSecret
+            - Effect: Allow
+              Action: verifiedpermissions:IsAuthorized
+              Resource: !GetAtt GatekeeperPolicyStore.Arn
+
+  DashboardFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handlers.dashboard_api.handler
+      Environment:
+        Variables:
+          DECISIONS_TABLE_NAME: !Ref DecisionsTable
+      Events:
+        GetDecisions:
+          Type: Api
+          Properties:
+            RestApiId: !Ref Api
+            Path: /decisions
+            Method: get
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref DecisionsTable
+
+  MembersTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      PrimaryKey:
+        Name: username
+        Type: String
+
+  DecisionsTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      PrimaryKey:
+        Name: id
+        Type: String
+
+  GatekeeperPolicyStore:
+    Type: AWS::VerifiedPermissions::PolicyStore
+    Properties:
+      ValidationSettings:
+        Mode: STRICT
+
+  GitHubTokenSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      SecretString: '{"token":"replace-me-with-a-real-github-token"}'
+
+  GitHubWebhookSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      SecretString: '{"secret":"replace-me-with-the-webhook-secret"}'
+
+Outputs:
+  ApiUrl:
+    Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com/prod/webhook"
+  PolicyStoreId:
+    Value: !Ref GatekeeperPolicyStore
