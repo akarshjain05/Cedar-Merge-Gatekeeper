@@ -1,3 +1,5 @@
+namespace CedarGatekeeper {
+
 entity GitHubUser;
 
 entity PullRequest;
@@ -23,3 +25,5 @@ action mergePR appliesTo {
     activeTeams: Set<String>
   }
 };
+
+}

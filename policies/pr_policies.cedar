@@ -3,7 +3,7 @@
 // Rule 1: Security team owns authentication modifications
 permit (
   principal,
-  action in [Action::"approvePR", Action::"mergePR"],
+  action in [CedarGatekeeper::Action::"approvePR", CedarGatekeeper::Action::"mergePR"],
   resource
 )
 when { context.activeTeams.contains("security-team") && context.changedPath like "/src/auth/*" };
@@ -11,7 +11,7 @@ when { context.activeTeams.contains("security-team") && context.changedPath like
 // Rule 2: Strict ban on self-approvals
 forbid (
   principal,
-  action == Action::"approvePR",
+  action == CedarGatekeeper::Action::"approvePR",
   resource
 )
 when { context.prAuthor == principal };
@@ -19,7 +19,7 @@ when { context.prAuthor == principal };
 // Rule 3: General engineers can approve and merge non-auth PRs
 permit (
   principal,
-  action in [Action::"approvePR", Action::"mergePR"],
+  action in [CedarGatekeeper::Action::"approvePR", CedarGatekeeper::Action::"mergePR"],
   resource
 )
 when { 
@@ -30,7 +30,7 @@ when {
 // Rule 4: Large PRs require senior engineering approval
 forbid (
   principal,
-  action == Action::"approvePR",
+  action == CedarGatekeeper::Action::"approvePR",
   resource
 )
 when {
