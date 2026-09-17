@@ -27,6 +27,6 @@ def is_authorized(policy_store_id: str, principal_id: str, action_id: str, resou
     )
     return {
         "allowed": response["decision"] == "ALLOW",
-        "policy_ids": [d["id"] for d in response.get("determiningPolicies", [])],
+        "policy_ids": [d["policyId"] for d in response.get("determiningPolicies", [])],
         "errors": response.get("errors", []),
     }
