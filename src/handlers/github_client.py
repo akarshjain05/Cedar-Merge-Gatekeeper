@@ -34,69 +34,60 @@ def set_check_run_status(repo_name: str, head_sha: str, allowed: bool, reason: s
     conclusion = "success" if allowed else "failure"
 
     url = f"{base_url}/repos/{repo_name}/check-runs"
-    try:
-        requests.post(
-            url,
-            headers={
-                "Authorization": f"Bearer {_get_token()}",
-                "Accept": "application/vnd.github.v3+json"
-            },
-            json={
-                "name": "Cedar Merge Gatekeeper",
-                "head_sha": head_sha,
-                "status": status,
-                "conclusion": conclusion,
-                "output": {
-                    "title": "Cedar Authorization Result",
-                    "summary": reason
-                }
-            },
-            timeout=5,
-        ).raise_for_status()
-    except Exception as e:
-        print(f"Mocked setting check run status failed or is disabled: {e}")
+    requests.post(
+        url,
+        headers={
+            "Authorization": f"Bearer {_get_token()}",
+            "Accept": "application/vnd.github.v3+json"
+        },
+        json={
+            "name": "Cedar Merge Gatekeeper",
+            "head_sha": head_sha,
+            "status": status,
+            "conclusion": conclusion,
+            "output": {
+                "title": "Cedar Authorization Result",
+                "summary": reason
+            }
+        },
+        timeout=5,
+    ).raise_for_status()
 
 def set_check_run_neutral(repo_name: str, head_sha: str, reason: str) -> None:
     base_url = os.environ.get("GITHUB_API_BASE_URL", "https://api.github.com")
     url = f"{base_url}/repos/{repo_name}/check-runs"
-    try:
-        requests.post(
-            url,
-            headers={
-                "Authorization": f"Bearer {_get_token()}",
-                "Accept": "application/vnd.github.v3+json"
-            },
-            json={
-                "name": "Cedar Merge Gatekeeper",
-                "head_sha": head_sha,
-                "status": "completed",
-                "conclusion": "neutral",
-                "output": {
-                    "title": "Cedar Authorization Degraded",
-                    "summary": reason
-                }
-            },
-            timeout=5,
-        ).raise_for_status()
-    except Exception as e:
-        print(f"Failed to set neutral status: {e}")
+    requests.post(
+        url,
+        headers={
+            "Authorization": f"Bearer {_get_token()}",
+            "Accept": "application/vnd.github.v3+json"
+        },
+        json={
+            "name": "Cedar Merge Gatekeeper",
+            "head_sha": head_sha,
+            "status": "completed",
+            "conclusion": "neutral",
+            "output": {
+                "title": "Cedar Authorization Degraded",
+                "summary": reason
+            }
+        },
+        timeout=5,
+    ).raise_for_status()
 
 def post_pr_comment(repo_name: str, pr_number: int, reason: str) -> None:
     base_url = os.environ.get("GITHUB_API_BASE_URL", "https://api.github.com")
     url = f"{base_url}/repos/{repo_name}/issues/{pr_number}/comments"
     
-    try:
-        requests.post(
-            url,
-            headers={
-                "Authorization": f"Bearer {_get_token()}",
-                "Accept": "application/vnd.github.v3+json"
-            },
-            json={"body": reason},
-            timeout=5,
-        ).raise_for_status()
-    except Exception as e:
-        print(f"Failed to post comment: {e}")
+    requests.post(
+        url,
+        headers={
+            "Authorization": f"Bearer {_get_token()}",
+            "Accept": "application/vnd.github.v3+json"
+        },
+        json={"body": reason},
+        timeout=5,
+    ).raise_for_status()
 
 def get_pr_changed_files(repo_name: str, pr_number: int) -> list[str]:
     """Fetches all changed file paths for a PR, handling pagination."""
@@ -110,24 +101,19 @@ def get_pr_changed_files(repo_name: str, pr_number: int) -> list[str]:
     }
     
     while url:
-        try:
-            response = requests.get(url, headers=headers, timeout=5)
-            response.raise_for_status()
+        response = requests.get(url, headers=headers, timeout=5)
+        response.raise_for_status()
+        
+        for item in response.json():
+            files.append(item.get("filename"))
             
-            for item in response.json():
-                files.append(item.get("filename"))
-                
-            # Handle GitHub API pagination
-            # The 'Link' header looks like: <https://api.github.com/...>; rel="next", <...>; rel="last"
-            url = None
-            if "Link" in response.headers:
-                links = response.headers["Link"].split(",")
-                for link in links:
-                    if 'rel="next"' in link:
-                        url = link[link.find("<")+1 : link.find(">")]
-                        break
-        except Exception as e:
-            print(f"Failed to fetch PR files: {e}")
-            break
-            
+        # Handle GitHub API pagination
+        url = None
+        if "Link" in response.headers:
+            links = response.headers["Link"].split(",")
+            for link in links:
+                if 'rel="next"' in link:
+                    url = link[link.find("<")+1 : link.find(">")]
+                    break
+    
     return files
