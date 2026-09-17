@@ -1,5 +1,6 @@
 {
-  "action": "opened",
+  "action": "submitted",
+  "review": {"state": "approved"},
   "number": 1,
   "pull_request": {
     "url": "https://api.github.com/repos/Codertocat/Hello-World/pulls/1",

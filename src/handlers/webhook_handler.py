@@ -63,6 +63,13 @@ def handler(event, context):
     if "pull_request" not in body:
         return {"statusCode": 200, "body": "Ignored event"}
 
+    # Phase 17 Bug #2: Only trigger on actual PR approvals (pull_request_review submitted)
+    is_review = "review" in body
+    is_approved = body.get("action") == "submitted" and body.get("review", {}).get("state") == "approved"
+    
+    if not (is_review and is_approved):
+        return {"statusCode": 200, "body": "Ignored non-approval event"}
+
     pr = body["pull_request"]
     
     try:
