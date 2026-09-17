@@ -20,9 +20,9 @@ def is_authorized(policy_store_id: str, principal_id: str, action_id: str, resou
     client = _get_client()
     response = client.is_authorized(
         policyStoreId=policy_store_id,
-        principal={"entityType": "GitHubUser", "entityId": principal_id},
-        action={"actionType": "Action", "actionId": action_id},
-        resource={"entityType": "PullRequest", "entityId": resource_id},
+        principal={"entityType": "CedarGatekeeper::GitHubUser", "entityId": principal_id},
+        action={"actionType": "CedarGatekeeper::Action", "actionId": action_id},
+        resource={"entityType": "CedarGatekeeper::PullRequest", "entityId": resource_id},
         context={"contextMap": context}
     )
     return {

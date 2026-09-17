@@ -88,7 +88,7 @@ def handler(event, context):
             context={
                 "changedPath": {"string": changed_path},
                 "totalLinesChanged": {"long": lines_changed},
-                "prAuthor": {"entityIdentifier": {"entityType": "GitHubUser", "entityId": author}},
+                "prAuthor": {"entityIdentifier": {"entityType": "CedarGatekeeper::GitHubUser", "entityId": author}},
                 "activeTeams": {"set": [{"string": t} for t in teams]},
             },
         )
