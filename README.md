@@ -9,6 +9,12 @@ Standard GitHub `CODEOWNERS` is static. It can enforce "Team X owns Path Y", but
 
 By decoupling the authorization logic from application code and moving it into AWS Verified Permissions, security and engineering teams can instantly update merge rules in the AWS Console without redeploying a single line of CI/CD code.
 
+## Security & Resilience Features
+- **Strict Event Gating**: The gatekeeper ignores standard PR open/synchronize noise, safely triggering authorization evaluation *only* when a `pull_request_review` approval or a direct `merge` is submitted.
+- **Fail-Closed API Fallbacks**: If the GitHub API rate-limits the Lambda or AWS Verified Permissions goes down, the gatekeeper falls back to a secure `NEUTRAL` degraded state (rather than failing open).
+- **Exact Path Matching**: Python path validation accurately normalizes and enforces absolute path prefixing to ensure 1:1 parity with the Cedar `like "/src/auth/*"` schemas, preventing false-positive bypassed checks.
+- **HMAC Hardened**: Full request signature validation verified comprehensively in unit tests.
+
 ## Architecture
 
 1. **GitHub** sends a webhook event (PR or Review) to an **API Gateway**.
