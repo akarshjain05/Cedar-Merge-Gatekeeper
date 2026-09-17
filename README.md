@@ -1,4 +1,4 @@
-# Cedar Merge Gatekeeper for CI/CD test
+# Cedar Merge Gatekeeper for CI/CD test1
 
 A serverless application that uses **AWS Verified Permissions** (Cedar) to evaluate complex pull request approvals that standard `CODEOWNERS` files cannot express. It acts as a dynamic merge gatekeeper, ensuring that code approvals comply with team hierarchy, file-path restrictions, and line-count thresholds before allowing code to merge.
 
