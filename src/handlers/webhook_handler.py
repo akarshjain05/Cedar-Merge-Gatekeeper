@@ -39,7 +39,7 @@ def verify_signature(event):
     if not signature_header:
         return False
         
-    body = event.get("body", "")
+    body = event.get("body") or ""
     expected_signature = "sha256=" + hmac.new(secret, body.encode("utf-8"), hashlib.sha256).hexdigest()
     
     return hmac.compare_digest(expected_signature, signature_header)
@@ -63,14 +63,18 @@ def handler(event, context):
     if "pull_request" not in body:
         return {"statusCode": 200, "body": "Ignored event"}
 
-    # Phase 17 Bug #2: Only trigger on actual PR approvals (pull_request_review submitted)
-    is_review = "review" in body
-    is_approved = body.get("action") == "submitted" and body.get("review", {}).get("state") == "approved"
+    action = body.get("action")
+    is_review_approved = "review" in body and action == "submitted" and body["review"].get("state") == "approved"
     
-    if not (is_review and is_approved):
-        return {"statusCode": 200, "body": "Ignored non-approval event"}
-
     pr = body["pull_request"]
+    is_merged = action == "closed" and pr.get("merged") is True
+    
+    if is_review_approved:
+        action_id = "approvePR"
+    elif is_merged:
+        action_id = "mergePR"
+    else:
+        return {"statusCode": 200, "body": "Ignored non-actionable event"}
     
     try:
         repo_name = body["repository"]["full_name"]
@@ -88,7 +92,7 @@ def handler(event, context):
     except Exception as e:
         decision_log = {
             "principal": sender,
-            "action": "approvePR",
+            "action": action_id,
             "resource": f"{repo_name}#{pr_number}",
             "verdict": "NEUTRAL",
             "policyId": "N/A",
@@ -120,7 +124,7 @@ def handler(event, context):
         result = avp_client.is_authorized(
             policy_store_id=os.environ.get("POLICY_STORE_ID", "store"),
             principal_id=sender,
-            action_id="approvePR",
+            action_id=action_id,
             resource_id=resource_id,
             context={
                 "changedPath": {"string": changed_path},
@@ -139,7 +143,7 @@ def handler(event, context):
             
         decision_log = {
             "principal": sender,
-            "action": "approvePR",
+            "action": action_id,
             "resource": resource_id,
             "verdict": decision,
             "policyId": policy_id,
@@ -158,7 +162,7 @@ def handler(event, context):
     except Exception as e:
         decision_log = {
             "principal": sender,
-            "action": "approvePR",
+            "action": action_id,
             "resource": resource_id,
             "verdict": "NEUTRAL",
             "policyId": "N/A",

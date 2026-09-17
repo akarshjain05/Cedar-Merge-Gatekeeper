@@ -1,31 +1,32 @@
-import os
 import json
+import os
 import boto3
-from datetime import datetime
 
-dynamodb = boto3.resource("dynamodb")
+def _cors_headers():
+    return {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type"
+    }
 
 def handler(event, context):
-    table_name = os.environ.get("DECISIONS_TABLE_NAME")
-    if not table_name:
-        return {"statusCode": 500, "body": "DECISIONS_TABLE_NAME not configured"}
+    if event.get("httpMethod") == "OPTIONS":
+        return {"statusCode": 200, "headers": _cors_headers(), "body": ""}
         
-    table = dynamodb.Table(table_name)
-    
-    # For a hackathon demo, a Scan is perfect. In prod we'd use a GSI.
-    response = table.scan()
-    items = response.get("Items", [])
-    
-    # Sort items by timestamp descending
-    items.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
-    
-    # Add CORS headers so the static HTML file can call it
-    return {
-        "statusCode": 200,
-        "headers": {
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, OPTIONS",
-            "Content-Type": "application/json"
-        },
-        "body": json.dumps({"decisions": items}),
-    }
+    try:
+        dynamodb = boto3.resource("dynamodb")
+        table = dynamodb.Table(os.environ["DECISIONS_TABLE_NAME"])
+        response = table.scan()
+        items = response.get("Item", response.get("Items", []))
+        
+        return {
+            "statusCode": 200,
+            "headers": _cors_headers(),
+            "body": json.dumps({"decisions": items})
+        }
+    except Exception as e:
+        return {
+            "statusCode": 500,
+            "headers": _cors_headers(),
+            "body": json.dumps({"error": str(e)})
+        }

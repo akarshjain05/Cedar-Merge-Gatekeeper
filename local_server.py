@@ -3,7 +3,6 @@ import json
 import logging
 from flask import Flask, request
 from unittest.mock import patch
-import cedarpy
 
 # Mock out team repository so it doesn't try to use DynamoDB
 from src.handlers import team_repository
