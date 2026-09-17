@@ -15,6 +15,23 @@ logger.setLevel(logging.INFO)
 
 import hmac
 import hashlib
+import uuid
+from datetime import datetime, timezone
+import boto3
+
+def _log_decision_to_db(decision_log: dict):
+    try:
+        table_name = os.environ.get("DECISIONS_TABLE_NAME")
+        if table_name:
+            dynamodb = boto3.resource("dynamodb")
+            table = dynamodb.Table(table_name)
+            
+            decision_log["id"] = str(uuid.uuid4())
+            decision_log["timestamp"] = datetime.now(timezone.utc).isoformat()
+            
+            table.put_item(Item=decision_log)
+    except Exception as e:
+        logger.error(f"Failed to record decision to DB: {e}")
 
 def verify_signature(event):
     secret = github_client.get_webhook_secret().encode("utf-8")
@@ -62,7 +79,18 @@ def handler(event, context):
     try:
         files = github_client.get_pr_changed_files(repo_name, pr_number)
     except Exception as e:
-        logger.error(f"GITHUB_API_FAILURE: {e}")
+        decision_log = {
+            "principal": sender,
+            "action": "approvePR",
+            "resource": f"{repo_name}#{pr_number}",
+            "verdict": "NEUTRAL",
+            "policyId": "N/A",
+            "reason": "GITHUB_API_FAILURE",
+            "error": str(e)
+        }
+        logger.error(json.dumps(decision_log))
+        _log_decision_to_db(decision_log)
+        
         reason = "⚠️ **Merge check degraded** — Unable to fetch changed files from GitHub due to API limits or errors."
         _notify_github_neutral(repo_name, head_sha, pr_number, reason)
         return {"statusCode": 200, "body": "Degraded - GitHub API Failure"}
@@ -112,36 +140,25 @@ def handler(event, context):
         logger.info(json.dumps(decision_log))
         
         # Write directly to the fallback DynamoDB decisions table
-        try:
-            import boto3
-            import uuid
-            from datetime import datetime, timezone
-            
-            table_name = os.environ.get("DECISIONS_TABLE_NAME")
-            if table_name:
-                dynamodb = boto3.resource("dynamodb")
-                table = dynamodb.Table(table_name)
-                
-                decision_log["id"] = str(uuid.uuid4())
-                decision_log["timestamp"] = datetime.now(timezone.utc).isoformat()
-                
-                table.put_item(Item=decision_log)
-        except Exception as e:
-            logger.error(f"Failed to record decision to DB: {e}")
+        _log_decision_to_db(decision_log)
         
         # Update GitHub
         github_client.set_check_run_status(repo_name, head_sha, result["allowed"], reason)
         github_client.post_pr_comment(repo_name, pr_number, reason)
 
     except Exception as e:
-        # AVP Failure Log specifically formatted for Dashboard distinct from ALLOW/DENY
-        logger.error(json.dumps({
+        decision_log = {
             "principal": sender,
+            "action": "approvePR",
             "resource": resource_id,
             "verdict": "NEUTRAL",
-            "error": str(e),
-            "reason": "AVP_UNREACHABLE"
-        }))
+            "policyId": "N/A",
+            "reason": "AVP_UNREACHABLE",
+            "error": str(e)
+        }
+        logger.error(json.dumps(decision_log))
+        _log_decision_to_db(decision_log)
+        
         reason = "⚠️ **Merge check degraded** — Unable to reach AWS Verified Permissions. Please try again later or contact an administrator."
         _notify_github_neutral(repo_name, head_sha, pr_number, reason)
         return {"statusCode": 200, "body": "Degraded - AVP Failure"}
