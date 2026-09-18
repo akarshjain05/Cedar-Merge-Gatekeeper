@@ -8,10 +8,10 @@ permit (
 )
 when { context.activeTeams.contains("security-team") && context.changedPath like "/src/auth/*" };
 
-// Rule 2: Strict ban on self-approvals
+// Rule 2: Strict ban on self-approvals and self-merges
 forbid (
   principal,
-  action == CedarGatekeeper::Action::"approvePR",
+  action in [CedarGatekeeper::Action::"approvePR", CedarGatekeeper::Action::"mergePR"],
   resource
 )
 when { context.prAuthor == principal };
@@ -23,7 +23,7 @@ permit (
   resource
 )
 when { 
-  context.activeTeams.contains("engineering-core") && 
+  (context.activeTeams.contains("engineering-core") || context.activeTeams.contains("senior-engineers")) && 
   !(context.changedPath like "/src/auth/*") 
 };
 

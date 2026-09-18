@@ -133,6 +133,9 @@ def handler(event, context):
                 "activeTeams": {"set": [{"string": t} for t in teams]},
             },
         )
+        if result.get("errors"):
+            logger.warning(f"AVP Evaluation Errors: {result['errors']}")
+            
         decision = "ALLOW" if result["allowed"] else "DENY"
         policy_id = result['policy_ids'][0] if result.get('policy_ids') else "default-deny"
         

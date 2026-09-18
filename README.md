@@ -15,6 +15,12 @@ By decoupling the authorization logic from application code and moving it into A
 - **Exact Path Matching**: Python path validation accurately normalizes and enforces absolute path prefixing to ensure 1:1 parity with the Cedar `like "/src/auth/*"` schemas, preventing false-positive bypassed checks.
 - **HMAC Hardened**: Full request signature validation verified comprehensively in unit tests.
 
+## What We Learned (Hackathon Journey)
+Building this over the last few days was a massive learning experience. Specifically, we learned:
+- **AWS Verified Permissions (Cedar)**: We learned how to write decoupled policy-as-code, define custom entity schemas, and map them to dynamic JSON contexts.
+- **The "Mocking Trap"**: We learned a hard lesson about unit testing vs. cloud integration. Our tests were 100% green locally, but failed in AWS because our Python strings (`Action::approvePR`) didn't strictly match our Cedar namespaces (`CedarGatekeeper::Action::approvePR`). We learned why end-to-end cloud testing is mandatory.
+- **Fail-Closed Resilience**: We learned that swallowing API errors (like GitHub rate limits) creates dangerous "fail-open" security vulnerabilities. We redesigned our Lambda to raise HTTP exceptions and explicitly degrade to a `NEUTRAL` state in DynamoDB, ensuring security gates never silently fail open.
+
 ## Architecture
 
 1. **GitHub** sends a webhook event (PR or Review) to an **API Gateway**.
