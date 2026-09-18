@@ -17,6 +17,7 @@ Globals:
     Environment:
       Variables:
         MEMBERS_TABLE_NAME: !Ref MembersTable
+        DECISIONS_TABLE_NAME: !Ref DecisionsTable
         POLICY_STORE_ID: !Ref GatekeeperPolicyStore
         GITHUB_API_BASE_URL: "https://api.github.com"
         GITHUB_TOKEN_SECRET_ARN: !Ref GitHubTokenSecret
