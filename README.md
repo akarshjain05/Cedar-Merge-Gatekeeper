@@ -1,4 +1,4 @@
-# Cedar Merge Gatekeeper. 
+# Cedar Merge Gatekeeper
 
 🚀 **[View Live Dashboard](https://main.d3ofi8gfbpsdj6.amplifyapp.com/)** | 🎥 **[Watch the Demo Video](YOUR_YOUTUBE_LINK_HERE)**
 
