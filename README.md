@@ -4,12 +4,17 @@
 
 A serverless application that uses **AWS Verified Permissions** (Cedar) to evaluate complex pull request approvals that standard `CODEOWNERS` files cannot express. It acts as a dynamic merge gatekeeper, ensuring that code approvals comply with team hierarchy, file-path restrictions, and line-count thresholds before allowing code to merge.
 
-## Why Cedar over CODEOWNERS?
-Standard GitHub `CODEOWNERS` is static. It can enforce "Team X owns Path Y", but it cannot enforce conditional logic like:
-- "Nobody can self-approve their own Pull Request."
-- "Pull requests over 500 lines require a Senior Engineer's approval."
+## The Problem, and Who It's For
 
-By decoupling the authorization logic from application code and moving it into AWS Verified Permissions, security and engineering teams can instantly update merge rules in the AWS Console without redeploying a single line of CI/CD code.
+Standard GitHub `CODEOWNERS` can say "the security team owns `/src/auth/`." But it can't say "unless the PR is over 500 lines," "not if you wrote it yourself," or "let anyone in `engineering-core` self-serve everything else." Those are exactly the rules real teams reach for after they've been burned once — a rushed self-approval, an auth change that slipped through because the reviewer was junior, or a policy exception that needed a full PR-and-redeploy cycle just to grant.
+
+Three people feel the difference directly when using this Gatekeeper:
+
+- **The security lead**, who currently either writes a brittle CI script for every exception or just trusts review discipline to hold. With this, they change who's allowed to approve `/src/auth/*` from the AWS console — no PR, no redeploy, no waiting on a release window — and it's enforced on the very next pull request.
+- **The engineer opening a PR**, who gets an immediate, specific reason on the check run and PR comment ("blocked — no self-approval" / "blocked — needs a senior reviewer") instead of a vague red X or forcing a human reviewer to be the bad guy.
+- **The engineering manager**, who no longer needs a platform team to hand-build and maintain this kind of conditional access logic — it's a managed AWS service and a handful of Cedar policies, not custom internal tooling someone has to own forever.
+
+The scope is deliberately narrow. That's the point: the live policy-edit-and-reflip we demo is the exact action a security lead would take mid-incident, not a staged trick.
 
 ## Security & Resilience Features
 - **Strict Event Gating**: The gatekeeper ignores standard PR open/synchronize noise, safely triggering authorization evaluation *only* when a `pull_request_review` approval or a direct `merge` is submitted.
