@@ -30,10 +30,9 @@ def get_webhook_secret() -> str:
 def set_check_run_status(repo_name: str, head_sha: str, allowed: bool, reason: str) -> None:
     base_url = os.environ.get("GITHUB_API_BASE_URL", "https://api.github.com")
     
-    status = "completed"
-    conclusion = "success" if allowed else "failure"
+    state = "success" if allowed else "failure"
 
-    url = f"{base_url}/repos/{repo_name}/check-runs"
+    url = f"{base_url}/repos/{repo_name}/statuses/{head_sha}"
     requests.post(
         url,
         headers={
@@ -41,21 +40,16 @@ def set_check_run_status(repo_name: str, head_sha: str, allowed: bool, reason: s
             "Accept": "application/vnd.github.v3+json"
         },
         json={
-            "name": "Cedar Merge Gatekeeper",
-            "head_sha": head_sha,
-            "status": status,
-            "conclusion": conclusion,
-            "output": {
-                "title": "Cedar Authorization Result",
-                "summary": reason
-            }
+            "context": "Cedar Merge Gatekeeper",
+            "state": state,
+            "description": "Action authorized" if allowed else "Action denied"
         },
         timeout=5,
     ).raise_for_status()
 
 def set_check_run_neutral(repo_name: str, head_sha: str, reason: str) -> None:
     base_url = os.environ.get("GITHUB_API_BASE_URL", "https://api.github.com")
-    url = f"{base_url}/repos/{repo_name}/check-runs"
+    url = f"{base_url}/repos/{repo_name}/statuses/{head_sha}"
     requests.post(
         url,
         headers={
@@ -63,14 +57,9 @@ def set_check_run_neutral(repo_name: str, head_sha: str, reason: str) -> None:
             "Accept": "application/vnd.github.v3+json"
         },
         json={
-            "name": "Cedar Merge Gatekeeper",
-            "head_sha": head_sha,
-            "status": "completed",
-            "conclusion": "neutral",
-            "output": {
-                "title": "Cedar Authorization Degraded",
-                "summary": reason
-            }
+            "context": "Cedar Merge Gatekeeper",
+            "state": "error",
+            "description": "API Degraded - Neutral Fallback"
         },
         timeout=5,
     ).raise_for_status()
