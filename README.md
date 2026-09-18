@@ -18,10 +18,10 @@ By decoupling the authorization logic from application code and moving it into A
 - **HMAC Hardened**: Full request signature validation verified comprehensively in unit tests.
 
 ## What We Learned (Hackathon Journey)
-Building this over the last few days was a massive learning experience. Specifically, we learned:
-- **AWS Verified Permissions (Cedar)**: We learned how to write decoupled policy-as-code, define custom entity schemas, and map them to dynamic JSON contexts.
-- **The "Mocking Trap"**: We learned a hard lesson about unit testing vs. cloud integration. Our tests were 100% green locally, but failed in AWS because our Python strings (`Action::approvePR`) didn't strictly match our Cedar namespaces (`CedarGatekeeper::Action::approvePR`). We learned why end-to-end cloud testing is mandatory.
-- **Fail-Closed Resilience**: We learned that swallowing API errors (like GitHub rate limits) creates dangerous "fail-open" security vulnerabilities. We redesigned our Lambda to raise HTTP exceptions and explicitly degrade to a `NEUTRAL` state in DynamoDB, ensuring security gates never silently fail open.
+Building this over the last few days was a massive learning experience. Four days ago, we set out to build a highly-resilient security tool, and we walked away having conquered exactly what we set out to learn:
+- **A service we had never touched**: We had never used **AWS Verified Permissions (Cedar)** before Thursday. We learned how to write decoupled policy-as-code, define custom entity schemas, and map them to dynamic JSON contexts.
+- **A first deploy**: We learned the hard way that local unit testing isn't enough. We successfully navigated our **first true cloud deployment** using AWS SAM, discovering and fixing critical namespace mismatches and API rate-limiting vulnerabilities that only appear in a live AWS environment. 
+- **A first agent**: We learned how to effectively pair-program alongside an autonomous AI agent (Google Deepmind's Antigravity). Rather than just generating code, we used the agent as an architectural sounding board to harden our fail-closed resilience logic and correctly map Cedar namespaces.
 
 ## Architecture
 
