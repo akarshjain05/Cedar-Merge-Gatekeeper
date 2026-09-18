@@ -1,8 +1,9 @@
-# Cedar Merge Gatekeeper for CI/CD test
+# Cedar Merge Gatekeeper
 
-🚀 **[View Live Dashboard](https://main.d3ofi8gfbpsdj6.amplifyapp.com/)**
+🚀 **[View Live Dashboard](https://main.d3ofi8gfbpsdj6.amplifyapp.com/)** | 🎥 **[Watch the Demo Video](YOUR_YOUTUBE_LINK_HERE)**
 
 A serverless application that uses **AWS Verified Permissions** (Cedar) to evaluate complex pull request approvals that standard `CODEOWNERS` files cannot express. It acts as a dynamic merge gatekeeper, ensuring that code approvals comply with team hierarchy, file-path restrictions, and line-count thresholds before allowing code to merge.
+
 
 ## The Problem, and Who It's For
 
@@ -62,6 +63,7 @@ make load-policies
 ## AI Tool Disclosure
 In compliance with hackathon rules, we disclose the use of the following AI tools used during the planning and build process:
 - **Google Deepmind's Agentic Assistant (Antigravity)**: Used extensively for architectural planning, drafting the Cedar schema, mocking the AWS API integrations during local testing, and structuring our deployment scripts.
+- **Anthropic's Claude**: Used as a strategic sparring partner to pressure-test the authorization logic, identify critical fail-open vulnerabilities, formulate the narrative for the Learning/Impact sections, and decide on the Amplify hosting pivot.
 
 ## Third-Party Libraries & Licenses
 - **Chart.js** (MIT License): Used in the `dashboard/index.html` file to render the decision distribution doughnut chart.

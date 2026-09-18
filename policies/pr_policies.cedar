@@ -30,7 +30,7 @@ when {
 // Rule 4: Large PRs require senior engineering approval
 forbid (
   principal,
-  action == CedarGatekeeper::Action::"approvePR",
+  action in [CedarGatekeeper::Action::"approvePR", CedarGatekeeper::Action::"mergePR"],
   resource
 )
 when {
