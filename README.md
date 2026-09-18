@@ -1,5 +1,7 @@
 # Cedar Merge Gatekeeper for CI/CD test
 
+🚀 **[View Live Dashboard](https://main.d3ofi8gfbpsdj6.amplifyapp.com/)**
+
 A serverless application that uses **AWS Verified Permissions** (Cedar) to evaluate complex pull request approvals that standard `CODEOWNERS` files cannot express. It acts as a dynamic merge gatekeeper, ensuring that code approvals comply with team hierarchy, file-path restrictions, and line-count thresholds before allowing code to merge.
 
 ## Why Cedar over CODEOWNERS?
@@ -30,7 +32,7 @@ Building this over the last few days was a massive learning experience. Specific
 5. **Verified Permissions** returns an `ALLOW` or explicit `DENY` decision, attaching the specific policy ID that triggered the denial.
 6. **Lambda** writes the decision to a secondary **DynamoDB Decisions Table**.
 7. **Lambda** updates the GitHub PR Check-Run status (success/neutral/failure) and posts a markdown comment explaining the exact reason.
-8. A **Serverless UI Dashboard** reads from the Decisions Table to visualize metrics via Chart.js.
+8. A **Serverless UI Dashboard** (securely hosted on **AWS Amplify**) reads from the Decisions Table to visualize metrics via Chart.js.
 
 ## Running it
 
