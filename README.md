@@ -17,11 +17,15 @@ By decoupling the authorization logic from application code and moving it into A
 - **Exact Path Matching**: Python path validation accurately normalizes and enforces absolute path prefixing to ensure 1:1 parity with the Cedar `like "/src/auth/*"` schemas, preventing false-positive bypassed checks.
 - **HMAC Hardened**: Full request signature validation verified comprehensively in unit tests.
 
-## What We Learned (Hackathon Journey)
-Building this over the last few days was a massive learning experience. Four days ago, we set out to build a highly-resilient security tool, and we walked away having conquered exactly what we set out to learn:
-- **A service we had never touched**: We had never used **AWS Verified Permissions (Cedar)** before Thursday. We learned how to write decoupled policy-as-code, define custom entity schemas, and map them to dynamic JSON contexts.
-- **A first deploy**: We learned the hard way that local unit testing isn't enough. We successfully navigated our **first true cloud deployment** using AWS SAM, discovering and fixing critical namespace mismatches and API rate-limiting vulnerabilities that only appear in a live AWS environment. 
-- **A first agent**: We learned how to effectively pair-program alongside an autonomous AI agent (Google Deepmind's Antigravity). Rather than just generating code, we used the agent as an architectural sounding board to harden our fail-closed resilience logic and correctly map Cedar namespaces.
+## Learning
+
+Coming into this build from a mostly FastAPI/PostgreSQL/Docker background, most of this stack was new ground:
+
+- **A service we had never touched**: We had never used **Amazon Verified Permissions / Cedar** before Thursday. Writing policy-as-code with `permit`/`forbid` statements instead of `if user.role == ...` checks meant a totally different mental model, especially learning that a single `forbid` always wins over any `permit` regardless of order.
+- **Schema and code must agree perfectly**: We spent over an hour convinced our Cedar policies were broken, only to realize the local tests were passing with mocked strings, while the live AWS code was sending `CedarGatekeeper::Action::"approvePR"` but our `.cedarschema` had no namespace. That silent implicit deny was our biggest "why isn't this working" moment.
+- **A first deploy**: Going from running things locally to an API Gateway → Lambda → DynamoDB architecture via AWS SAM was a massive first. Learning how to assign per-function IAM execution roles and pull secrets from AWS Secrets Manager instead of a local `.env` file was a huge step up in security.
+- **A first agent**: We learned how to effectively pair-program alongside an autonomous AI agent (Antigravity). We used the agent not just as a code generator, but as a sparring partner to hunt down a critical "fail-open" vulnerability where our code was swallowing GitHub rate-limit exceptions. Together, we built explicit `NEUTRAL` fallback states so the gatekeeper degrades safely during outages.
+- **Deploying a secure frontend**: Even hosting a single static dashboard file taught us something. We initially considered an S3 Static Website, but realized it only serves over HTTP. To avoid a "Not Secure" Chrome warning during a security demo, we pivoted to **AWS Amplify** to deploy our frontend with full HTTPS in minutes.
 
 ## Architecture
 
