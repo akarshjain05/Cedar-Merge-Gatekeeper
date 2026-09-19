@@ -33,7 +33,7 @@ Details:
 - Engineer (Principal): {principal}
 - Sensitive path changed (if any): {changed_path}
 - Total lines changed: {lines_changed}
-- Determining Policy ID (AWS auto-generated hash): {policy_id}
+- Determining Policy ID or Cedar Code: {policy_id}
 
 Known policies:
 - security-owns-auth: Only the security-team can approve changes to /src/auth/*

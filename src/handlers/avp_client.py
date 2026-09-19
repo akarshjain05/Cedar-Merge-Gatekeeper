@@ -22,7 +22,15 @@ def get_policy_description(policy_store_id: str, policy_id: str) -> str:
         try:
             resp = client.get_policy(policyStoreId=policy_store_id, policyId=policy_id)
             desc = resp.get("policyDefinition", {}).get("static", {}).get("description")
-            _policy_descriptions[policy_id] = desc if desc else policy_id
+            statement = resp.get("policyDefinition", {}).get("static", {}).get("statement")
+            
+            if desc:
+                _policy_descriptions[policy_id] = desc
+            elif statement:
+                # If no description exists, return the exact Cedar code so the AI can read it!
+                _policy_descriptions[policy_id] = f"Cedar Policy Code:\n{statement}"
+            else:
+                _policy_descriptions[policy_id] = policy_id
         except Exception:
             _policy_descriptions[policy_id] = policy_id
             
