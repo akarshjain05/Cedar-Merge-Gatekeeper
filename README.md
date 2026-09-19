@@ -78,13 +78,7 @@ This means a malicious insider with standard `write` access to the repository co
 **The Production Fix (Future Work)**
 In a production rollout, this architecture must be migrated to a dedicated **GitHub App** utilizing the modern **Check Runs API** (`/check-runs`). Unlike legacy commit statuses, Check Runs are strictly bound to the specific GitHub App ID that created them. If a junior engineer attempts to forge a Check Run via the API, GitHub will instantly reject it because they do not possess the cryptographic private key belonging to the Gatekeeper GitHub App, rendering the architecture 100% tamper-proof at the GitHub boundary.
 
-**Dynamic Path Parsing vs Hardcoded Search**
-While our architecture successfully demonstrates that authorization logic (who can approve, line count thresholds) can be modified live in AWS Verified Permissions without redeploying code, protecting a completely *new* path (e.g., `/src/payments/*`) currently requires a Lambda code change. 
 
-Our current MVP `webhook_handler.py` iterates over the PR files and explicitly searches for `/src/auth/` to forward to Cedar. If it doesn't find it, it defaults to the first file in the PR. Consequently, if a developer modifies `/README.md` and `/src/payments/charge.py`, the Lambda will only forward `/README.md` to Cedar, bypassing any newly created Cedar rules targeting the payments path.
-
-**The Production Fix (Future Work)**
-The proper enterprise solution is to evaluate every single changed file against the Cedar engine. AWS Verified Permissions supports a **Batch Authorization API**. In a production environment, our Lambda would call the Batch API, passing every changed file in the PR simultaneously. If *any* file is denied, the entire PR is denied. This would shift the file-path extraction logic entirely to Cedar, allowing the security lead to dynamically protect `/src/payments/*` via the AWS Console without ever touching the Lambda code.
 
 ## How to use this on your own GitHub Repository
 Once you have deployed the AWS SAM stack, you can attach this gatekeeper to any GitHub repository:

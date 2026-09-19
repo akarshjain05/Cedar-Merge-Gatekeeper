@@ -130,16 +130,6 @@ def handler(event, context):
         _notify_github_neutral(repo_name, head_sha, pr_number, reason)
         return {"statusCode": 200, "body": "Degraded - GitHub API Failure"}
 
-    changed_path = "/unknown"
-    for f in files:
-        normalized_f = f if f.startswith("/") else f"/{f}"
-        if normalized_f.startswith("/src/auth/"):
-            changed_path = normalized_f
-            break
-            
-    if changed_path == "/unknown" and files:
-        changed_path = files[0] if files[0].startswith("/") else f"/{files[0]}"
-
     teams = team_repository.get_teams_for_user(sender)
     resource_id = f"{repo_name}#{pr_number}"
 
@@ -147,22 +137,41 @@ def handler(event, context):
     day_of_week = datetime.now(timezone.utc).strftime("%A")
     is_hotfix = "[HOTFIX]" in pr_title.upper()
 
-    # 2. AVP Failure Resilience
+    # 2. AVP Failure Resilience & Multi-file Evaluation
     try:
-        result = avp_client.is_authorized(
-            policy_store_id=os.environ.get("POLICY_STORE_ID", "store"),
-            principal_id=sender,
-            action_id=action_id,
-            resource_id=resource_id,
-            context={
-                "changedPath": {"string": changed_path},
-                "totalLinesChanged": {"long": lines_changed},
-                "prAuthor": {"entityIdentifier": {"entityType": "CedarGatekeeper::GitHubUser", "entityId": author}},
-                "activeTeams": {"set": [{"string": t} for t in teams]},
-                "dayOfWeek": {"string": day_of_week},
-                "isHotfix": {"boolean": is_hotfix},
-            },
-        )
+        final_result = None
+        final_changed_path = None
+        
+        if not files:
+            files = ["/unknown"]
+
+        # Evaluate every file. Deny immediately if any file fails.
+        for f in files:
+            normalized_f = f if f.startswith("/") else f"/{f}"
+            result = avp_client.is_authorized(
+                policy_store_id=os.environ.get("POLICY_STORE_ID", "store"),
+                principal_id=sender,
+                action_id=action_id,
+                resource_id=resource_id,
+                context={
+                    "changedPath": {"string": normalized_f},
+                    "totalLinesChanged": {"long": lines_changed},
+                    "prAuthor": {"entityIdentifier": {"entityType": "CedarGatekeeper::GitHubUser", "entityId": author}},
+                    "activeTeams": {"set": [{"string": t} for t in teams]},
+                    "dayOfWeek": {"string": day_of_week},
+                    "isHotfix": {"boolean": is_hotfix},
+                },
+            )
+            final_result = result
+            final_changed_path = normalized_f
+            
+            # If Cedar denies this specific file, stop evaluating and reject the PR
+            if not result["allowed"]:
+                break
+                
+        result = final_result
+        changed_path = final_changed_path
+        
     except Exception as e:
         decision_log = {
             "principal": sender,
