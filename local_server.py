@@ -54,9 +54,18 @@ def fake_is_authorized(policy_store_id, principal_id, action_id, resource_id, co
     # Implicit deny — no policy matched
     return {"allowed": False, "policy_ids": ["default-deny"], "errors": []}
 
+def fake_batch_is_authorized(policy_store_id, requests):
+    results = []
+    for req in requests:
+        principal_id = req["principal"]["entityId"]
+        action_id = req["action"]["actionId"]
+        resource_id = req["resource"]["entityId"]
+        context = req["context"]["contextMap"]
+        results.append(fake_is_authorized(policy_store_id, principal_id, action_id, resource_id, context))
+    return results
+
 avp_client.is_authorized = fake_is_authorized
-
-
+avp_client.batch_is_authorized = fake_batch_is_authorized
 
 # Bypass AWS entirely — inject secrets directly into the module-level cache
 # so github_client never calls boto3.client("secretsmanager") at all.

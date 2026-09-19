@@ -154,45 +154,55 @@ def handler(event, context):
         if not files:
             files = ["/unknown"]
 
-        # Evaluate every file against every approver
+        # Build the batch requests
+        batch_requests = []
         for f in files:
             normalized_f = f if f.startswith("/") else f"/{f}"
-            file_allowed = False
-            file_result = None
-            
-            # A file is approved if ANY approver is authorized to approve it
             for approver in approvers:
                 teams = team_repository.get_teams_for_user(approver)
-                
-                result = avp_client.is_authorized(
-                    policy_store_id=os.environ.get("POLICY_STORE_ID", "store"),
-                    principal_id=approver,
-                    action_id=action_id,
-                    resource_id=resource_id,
-                    context={
+                batch_requests.append({
+                    "file": normalized_f, # Custom tracking key
+                    "principal_id": approver,
+                    "action_id": action_id,
+                    "resource_id": resource_id,
+                    "context": {
                         "changedPath": {"string": normalized_f},
                         "totalLinesChanged": {"long": lines_changed},
                         "prAuthor": {"entityIdentifier": {"entityType": "CedarGatekeeper::GitHubUser", "entityId": author}},
                         "activeTeams": {"set": [{"string": t} for t in teams]},
                         "dayOfWeek": {"string": day_of_week},
                         "isHotfix": {"boolean": is_hotfix},
-                    },
-                )
-                file_result = result
+                    }
+                })
+
+        # Send to AWS Verified Permissions Batch API
+        batch_results = avp_client.batch_is_authorized(
+            policy_store_id=os.environ.get("POLICY_STORE_ID", "store"),
+            requests=batch_requests
+        )
+
+        # Merge results: A file is approved if ANY approver is authorized to approve it
+        file_approval_status = { (f if f.startswith("/") else f"/{f}"): False for f in files }
+        denied_file_results = {} # Track the last denied result per file in case it completely fails
+        
+        for req, res in zip(batch_requests, batch_results):
+            if res["allowed"]:
+                file_approval_status[req["file"]] = True
+            else:
+                denied_file_results[req["file"]] = res
                 
-                if result["allowed"]:
-                    file_allowed = True
-                    break # We found a valid approver for this file!
-                    
-            final_result = file_result
-            final_changed_path = normalized_f
-            
-            # If NO approver is allowed to approve this specific file, stop evaluating and reject the PR
-            if not file_allowed:
-                break
-                
-        result = final_result
-        changed_path = final_changed_path
+        # Check if ALL files were approved
+        all_files_approved = all(file_approval_status.values())
+        
+        if all_files_approved:
+            # Success! Grab any successful result for the logging output
+            result = next(res for res in batch_results if res["allowed"])
+            changed_path = files[0] if files[0].startswith("/") else f"/{files[0]}"
+        else:
+            # Find a file that was NOT approved and report it
+            failed_file = next(f for f, allowed in file_approval_status.items() if not allowed)
+            result = denied_file_results[failed_file]
+            changed_path = failed_file
         
     except Exception as e:
         decision_log = {

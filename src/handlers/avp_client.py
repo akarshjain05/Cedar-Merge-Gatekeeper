@@ -59,3 +59,45 @@ def is_authorized(policy_store_id: str, principal_id: str, action_id: str, resou
         "policy_ids": policy_ids,
         "errors": response.get("errors", []),
     }
+
+def batch_is_authorized(policy_store_id: str, requests: list) -> list:
+    """
+    Takes a list of dicts: {"principal_id": ..., "action_id": ..., "resource_id": ..., "context": ...}
+    Returns a list of dicts: {"allowed": bool, "policy_ids": [...], "errors": [...]} in the same order.
+    Handles AWS 30-item batch limit.
+    """
+    client = _get_client()
+    results = []
+    
+    # AWS Verified Permissions has a hard limit of 30 requests per BatchIsAuthorized call
+    for i in range(0, len(requests), 30):
+        chunk = requests[i:i + 30]
+        
+        avp_requests = []
+        for req in chunk:
+            avp_requests.append({
+                "principal": {"entityType": "CedarGatekeeper::GitHubUser", "entityId": req["principal_id"]},
+                "action": {"actionType": "CedarGatekeeper::Action", "actionId": req["action_id"]},
+                "resource": {"entityType": "CedarGatekeeper::PullRequest", "entityId": req["resource_id"]},
+                "context": {"contextMap": req["context"]}
+            })
+            
+        response = client.batch_is_authorized(
+            policyStoreId=policy_store_id,
+            requests=avp_requests
+        )
+        
+        for res in response.get("results", []):
+            policy_ids = []
+            for d in res.get("determiningPolicies", []):
+                raw_id = d["policyId"]
+                policy_ids.append(get_policy_description(policy_store_id, raw_id))
+                
+            request_result = {
+                "allowed": res["decision"] == "ALLOW",
+                "policy_ids": policy_ids,
+                "errors": res.get("errors", [])
+            }
+            results.append(request_result)
+            
+    return results

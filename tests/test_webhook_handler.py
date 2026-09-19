@@ -41,11 +41,16 @@ def members_table():
 
 def _stub_avp(monkeypatch, allowed: bool, policy_id: str | None = None):
     monkeypatch.setattr(
-        webhook_handler.avp_client, "is_authorized",
-        lambda **kwargs: {"allowed": allowed, "policy_ids": [policy_id] if policy_id else [], "errors": []},
+        webhook_handler.avp_client, "batch_is_authorized",
+        lambda policy_store_id, requests: [
+            {"allowed": allowed, "policy_ids": [policy_id] if policy_id else [], "errors": []}
+            for _ in requests
+        ]
     )
     monkeypatch.setattr(webhook_handler, "verify_signature", lambda e: True)
     monkeypatch.setattr(webhook_handler.github_client, "get_pr_changed_files", lambda repo, pr: ["/src/auth/login.py"])
+    monkeypatch.setattr(webhook_handler.github_client, "get_pr_line_count", lambda repo, pr: 10)
+    monkeypatch.setattr(webhook_handler.github_client, "get_pr_approvers", lambda repo, pr: [])
     
     # Mock Bedrock AI to just return a static string for testing
     monkeypatch.setattr(
@@ -124,10 +129,12 @@ def test_avp_failure_degrades_gracefully(members_table, monkeypatch):
     def _boom(*a, **k):
         raise RuntimeError("AVP Unreachable")
 
-    monkeypatch.setattr(webhook_handler.avp_client, "is_authorized", _boom)
+    monkeypatch.setattr(webhook_handler.avp_client, "batch_is_authorized", _boom)
     monkeypatch.setattr(webhook_handler.github_client, "set_commit_status_neutral", lambda *a, **k: None)
     monkeypatch.setattr(webhook_handler.github_client, "post_pr_comment", lambda *a, **k: None)
     monkeypatch.setattr(webhook_handler.github_client, "get_pr_changed_files", lambda repo, pr: ["/src/main.py"])
+    monkeypatch.setattr(webhook_handler.github_client, "get_pr_line_count", lambda repo, pr: 10)
+    monkeypatch.setattr(webhook_handler.github_client, "get_pr_approvers", lambda repo, pr: [])
     monkeypatch.setattr(webhook_handler, "verify_signature", lambda e: True)
 
     with open("tests/fixtures/real_pr_payload.json", "r") as f:
@@ -255,14 +262,17 @@ def test_merge_action_path(members_table, monkeypatch):
     monkeypatch.setattr(webhook_handler.github_client, "set_commit_status", lambda *a, **k: None)
     monkeypatch.setattr(webhook_handler.github_client, "post_pr_comment", lambda *a, **k: None)
     monkeypatch.setattr(webhook_handler.bedrock_client, "generate_explanation", lambda *a, **k: "AI Reason")
+    monkeypatch.setattr(webhook_handler.github_client, "get_pr_line_count", lambda repo, pr: 10)
+    monkeypatch.setattr(webhook_handler.github_client, "get_pr_approvers", lambda repo, pr: [])
 
     called_action = []
 
-    def mock_is_authorized(**kwargs):
-        called_action.append(kwargs.get("action_id"))
-        return {"allowed": True, "policy_ids": ["engineering-default"], "errors": []}
+    def mock_batch_is_authorized(policy_store_id, requests):
+        if requests:
+            called_action.append(requests[0].get("action_id"))
+        return [{"allowed": True, "policy_ids": ["engineering-default"], "errors": []} for _ in requests]
         
-    monkeypatch.setattr(webhook_handler.avp_client, "is_authorized", mock_is_authorized)
+    monkeypatch.setattr(webhook_handler.avp_client, "batch_is_authorized", mock_batch_is_authorized)
 
     with open("tests/fixtures/real_pr_payload.json", "r") as f:
         payload = json.load(f)
@@ -279,3 +289,42 @@ def test_merge_action_path(members_table, monkeypatch):
 
     assert response["statusCode"] == 200
     assert called_action == ["mergePR"]
+
+def test_denies_pr_when_a_non_first_non_auth_file_is_denied(members_table, monkeypatch):
+    """Reproduces the exact scenario: /README.md + /src/payments/charge.py, only the second one denied."""
+    monkeypatch.setattr(webhook_handler, "verify_signature", lambda e: True)
+    monkeypatch.setattr(webhook_handler.github_client, "get_pr_changed_files", lambda repo, pr: ["/README.md", "/src/payments/charge.py"])
+    monkeypatch.setattr(webhook_handler.github_client, "get_pr_line_count", lambda repo, pr: 10)
+    monkeypatch.setattr(webhook_handler.github_client, "get_pr_approvers", lambda repo, pr: ["test-user"])
+    monkeypatch.setattr(webhook_handler.github_client, "set_commit_status", lambda *a, **k: None)
+    monkeypatch.setattr(webhook_handler.github_client, "post_pr_comment", lambda *a, **k: None)
+    monkeypatch.setattr(webhook_handler.bedrock_client, "generate_explanation", lambda *a, **k: "AI Reason")
+
+    requested_files = []
+
+    def mock_batch_is_authorized(policy_store_id, requests):
+        results = []
+        for req in requests:
+            file_path = req["context"]["changedPath"]["string"]
+            requested_files.append(file_path)
+            # Allow README, deny payments
+            if file_path == "/README.md":
+                results.append({"allowed": True, "policy_ids": ["engineering-default"], "errors": []})
+            else:
+                results.append({"allowed": False, "policy_ids": ["default-deny"], "errors": []})
+        return results
+
+    monkeypatch.setattr(webhook_handler.avp_client, "batch_is_authorized", mock_batch_is_authorized)
+
+    with open("tests/fixtures/real_pr_payload.json", "r") as f:
+        payload = json.load(f)
+        
+    event = {"body": json.dumps(payload)}
+    response = webhook_handler.handler(event, None)
+    
+    body = json.loads(response["body"])
+    assert body["decision"] == "DENY"
+    
+    # Assert both files were actually sent to Cedar
+    assert "/README.md" in requested_files
+    assert "/src/payments/charge.py" in requested_files
