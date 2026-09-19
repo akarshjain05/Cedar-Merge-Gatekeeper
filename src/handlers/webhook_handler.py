@@ -109,6 +109,10 @@ def handler(event, context):
     # 1. GitHub API Failure Resilience
     try:
         files = github_client.get_pr_changed_files(repo_name, pr_number)
+        
+        # When a PR Review is submitted, the webhook payload often omits additions/deletions. 
+        # We must explicitly fetch it from GitHub to prevent 0-line bypasses.
+        lines_changed = github_client.get_pr_line_count(repo_name, pr_number)
     except Exception as e:
         decision_log = {
             "principal": sender,

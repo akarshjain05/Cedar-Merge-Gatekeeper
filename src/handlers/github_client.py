@@ -90,6 +90,22 @@ def post_pr_comment(repo_name: str, pr_number: int, reason: str) -> None:
         timeout=5,
     ).raise_for_status()
 
+def get_pr_line_count(repo_name: str, pr_number: int) -> int:
+    """Fetches the actual PR from GitHub to get true line count (additions + deletions)."""
+    base_url = os.environ.get("GITHUB_API_BASE_URL", "https://api.github.com")
+    url = f"{base_url}/repos/{repo_name}/pulls/{pr_number}"
+    response = requests.get(
+        url,
+        headers={
+            "Authorization": f"Bearer {_get_token()}",
+            "Accept": "application/vnd.github.v3+json"
+        },
+        timeout=5
+    )
+    response.raise_for_status()
+    data = response.json()
+    return data.get("additions", 0) + data.get("deletions", 0)
+
 def get_pr_changed_files(repo_name: str, pr_number: int) -> list[str]:
     """Fetches all changed file paths for a PR, handling pagination."""
     base_url = os.environ.get("GITHUB_API_BASE_URL", "https://api.github.com")
