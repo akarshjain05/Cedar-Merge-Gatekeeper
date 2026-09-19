@@ -49,7 +49,7 @@ Coming into this build from a mostly FastAPI/PostgreSQL/Docker background, most 
 5. **Verified Permissions** returns an `ALLOW` or explicit `DENY` decision, attaching the specific policy ID that triggered the denial.
 6. **Lambda** writes the decision to a secondary **DynamoDB Decisions Table**.
 7. **Lambda** invokes **Amazon Bedrock (Amazon Nova Lite)** to generate a plain-English explanation for why the PR was approved or blocked, citing the exact Cedar policy.
-8. **Lambda** updates the modern **GitHub PR Check-Runs API** (success/neutral/failure) and attaches the rich AI explanation payload to the Check Run output.
+8. **Lambda** updates the legacy **GitHub Commit Statuses API** (success/neutral/failure) and attaches the rich AI explanation payload to a Pull Request Comment.
 9. A **Serverless UI Dashboard** (securely hosted on **AWS Amplify**) reads from the Decisions Table to visualize live metrics via Chart.js, chronologically sorted.
 
 ## Running it
@@ -67,6 +67,16 @@ make build && make deploy
 # 4. Load Cedar schemas and policies into Verified Permissions
 make load-policies
 ```
+
+## Known Limitations & Security Boundaries
+**GitHub Commit Statuses vs Check Runs API**
+For this hackathon MVP, we deliberately utilized the legacy **GitHub Commit Statuses API** (`/statuses`) because it supports rapid prototyping using a Classic Personal Access Token (PAT). 
+
+While AWS Verified Permissions operates flawlessly, the GitHub Commit Statuses API introduces a known trust boundary vulnerability: **Commit status contexts are not cryptographically bound to the identity that created them.** 
+This means a malicious insider with standard `write` access to the repository could theoretically forge a passing status by sending a `POST` request to the `/statuses` endpoint using their own PAT and injecting our exact context label (`Cedar Merge Gatekeeper`), bypassing the branch protection rule.
+
+**The Production Fix (Future Work)**
+In a production rollout, this architecture must be migrated to a dedicated **GitHub App** utilizing the modern **Check Runs API** (`/check-runs`). Unlike legacy commit statuses, Check Runs are strictly bound to the specific GitHub App ID that created them. If a junior engineer attempts to forge a Check Run via the API, GitHub will instantly reject it because they do not possess the cryptographic private key belonging to the Gatekeeper GitHub App, rendering the architecture 100% tamper-proof at the GitHub boundary.
 
 ## How to use this on your own GitHub Repository
 Once you have deployed the AWS SAM stack, you can attach this gatekeeper to any GitHub repository:
