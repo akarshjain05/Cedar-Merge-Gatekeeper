@@ -56,7 +56,7 @@ def _stub_avp(monkeypatch, allowed: bool, policy_id: str | None = None):
 
 def test_allows_security_to_approve_auth(members_table, monkeypatch):
     _stub_avp(monkeypatch, allowed=True, policy_id="security-owns-auth")
-    monkeypatch.setattr(webhook_handler.github_client, "set_check_run_status", lambda *a, **k: None)
+    monkeypatch.setattr(webhook_handler.github_client, "set_commit_status", lambda *a, **k: None)
     monkeypatch.setattr(webhook_handler.github_client, "post_pr_comment", lambda *a, **k: None)
 
     # Load realistic payload from fixture
@@ -78,7 +78,7 @@ def test_allows_security_to_approve_auth(members_table, monkeypatch):
 
 def test_denies_self_approval(members_table, monkeypatch):
     _stub_avp(monkeypatch, allowed=False, policy_id="no-self-approval")
-    monkeypatch.setattr(webhook_handler.github_client, "set_check_run_status", lambda *a, **k: None)
+    monkeypatch.setattr(webhook_handler.github_client, "set_commit_status", lambda *a, **k: None)
     monkeypatch.setattr(webhook_handler.github_client, "post_pr_comment", lambda *a, **k: None)
 
     with open("tests/fixtures/real_pr_payload.json", "r") as f:
@@ -107,7 +107,7 @@ def test_github_api_failure_degrades_gracefully(members_table, monkeypatch):
         raise RuntimeError("GitHub API rate limited")
 
     monkeypatch.setattr(webhook_handler.github_client, "get_pr_changed_files", _boom)
-    monkeypatch.setattr(webhook_handler.github_client, "set_check_run_neutral", lambda *a, **k: None)
+    monkeypatch.setattr(webhook_handler.github_client, "set_commit_status_neutral", lambda *a, **k: None)
     monkeypatch.setattr(webhook_handler.github_client, "post_pr_comment", lambda *a, **k: None)
     monkeypatch.setattr(webhook_handler, "verify_signature", lambda e: True)
 
@@ -125,7 +125,7 @@ def test_avp_failure_degrades_gracefully(members_table, monkeypatch):
         raise RuntimeError("AVP Unreachable")
 
     monkeypatch.setattr(webhook_handler.avp_client, "is_authorized", _boom)
-    monkeypatch.setattr(webhook_handler.github_client, "set_check_run_neutral", lambda *a, **k: None)
+    monkeypatch.setattr(webhook_handler.github_client, "set_commit_status_neutral", lambda *a, **k: None)
     monkeypatch.setattr(webhook_handler.github_client, "post_pr_comment", lambda *a, **k: None)
     monkeypatch.setattr(webhook_handler.github_client, "get_pr_changed_files", lambda repo, pr: ["/src/main.py"])
     monkeypatch.setattr(webhook_handler, "verify_signature", lambda e: True)
@@ -142,7 +142,7 @@ def test_avp_failure_degrades_gracefully(members_table, monkeypatch):
 
 def test_large_pr_allowed_for_senior_engineer(members_table, monkeypatch):
     _stub_avp(monkeypatch, allowed=True, policy_id="engineering-default")
-    monkeypatch.setattr(webhook_handler.github_client, "set_check_run_status", lambda *a, **k: None)
+    monkeypatch.setattr(webhook_handler.github_client, "set_commit_status", lambda *a, **k: None)
     monkeypatch.setattr(webhook_handler.github_client, "post_pr_comment", lambda *a, **k: None)
 
     with open("tests/fixtures/real_pr_payload.json", "r") as f:
@@ -165,7 +165,7 @@ def test_large_pr_allowed_for_senior_engineer(members_table, monkeypatch):
 
 def test_large_pr_denied_for_standard_engineer(members_table, monkeypatch):
     _stub_avp(monkeypatch, allowed=False, policy_id="large-pr-requires-senior")
-    monkeypatch.setattr(webhook_handler.github_client, "set_check_run_status", lambda *a, **k: None)
+    monkeypatch.setattr(webhook_handler.github_client, "set_commit_status", lambda *a, **k: None)
     monkeypatch.setattr(webhook_handler.github_client, "post_pr_comment", lambda *a, **k: None)
 
     with open("tests/fixtures/real_pr_payload.json", "r") as f:
@@ -193,7 +193,7 @@ def test_looks_up_real_team_membership_from_dynamodb(members_table, monkeypatch)
 
 def test_denies_non_security_to_approve_auth(members_table, monkeypatch):
     _stub_avp(monkeypatch, allowed=False, policy_id="default-deny")
-    monkeypatch.setattr(webhook_handler.github_client, "set_check_run_status", lambda *a, **k: None)
+    monkeypatch.setattr(webhook_handler.github_client, "set_commit_status", lambda *a, **k: None)
     monkeypatch.setattr(webhook_handler.github_client, "post_pr_comment", lambda *a, **k: None)
 
     with open("tests/fixtures/real_pr_payload.json", "r") as f:
@@ -214,7 +214,7 @@ def test_denies_non_security_to_approve_auth(members_table, monkeypatch):
 
 def test_bedrock_fallback_uses_static_reason(members_table, monkeypatch):
     _stub_avp(monkeypatch, allowed=False, policy_id="some-policy")
-    monkeypatch.setattr(webhook_handler.github_client, "set_check_run_status", lambda *a, **k: None)
+    monkeypatch.setattr(webhook_handler.github_client, "set_commit_status", lambda *a, **k: None)
     monkeypatch.setattr(webhook_handler.github_client, "post_pr_comment", lambda *a, **k: None)
     
     # Force Bedrock to fail
@@ -234,7 +234,7 @@ def test_bedrock_fallback_uses_static_reason(members_table, monkeypatch):
 
 def test_bedrock_ai_reason_used(members_table, monkeypatch):
     _stub_avp(monkeypatch, allowed=False, policy_id="some-policy")
-    monkeypatch.setattr(webhook_handler.github_client, "set_check_run_status", lambda *a, **k: None)
+    monkeypatch.setattr(webhook_handler.github_client, "set_commit_status", lambda *a, **k: None)
     monkeypatch.setattr(webhook_handler.github_client, "post_pr_comment", lambda *a, **k: None)
     
     with open("tests/fixtures/real_pr_payload.json", "r") as f:
@@ -252,7 +252,7 @@ def test_merge_action_path(members_table, monkeypatch):
     """Proves the webhook_handler correctly delegates PR closed/merged events to the mergePR Cedar action."""
     monkeypatch.setattr(webhook_handler, "verify_signature", lambda e: True)
     monkeypatch.setattr(webhook_handler.github_client, "get_pr_changed_files", lambda repo, pr: ["/src/main.py"])
-    monkeypatch.setattr(webhook_handler.github_client, "set_check_run_status", lambda *a, **k: None)
+    monkeypatch.setattr(webhook_handler.github_client, "set_commit_status", lambda *a, **k: None)
     monkeypatch.setattr(webhook_handler.github_client, "post_pr_comment", lambda *a, **k: None)
     monkeypatch.setattr(webhook_handler.bedrock_client, "generate_explanation", lambda *a, **k: "AI Reason")
 

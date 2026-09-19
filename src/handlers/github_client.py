@@ -1,6 +1,6 @@
 """
 GitHub REST client: fetch a token from Secrets Manager once per cold
-start, cache it, and use it for outbound GitHub API calls (Check Runs, PR comments).
+start, cache it, and use it for outbound GitHub API calls (Commit Statuses, PR comments).
 """
 import os
 import json
@@ -27,12 +27,17 @@ def get_webhook_secret() -> str:
     return _cached_webhook_secret
 
 
-def set_check_run_status(repo_name: str, head_sha: str, allowed: bool, reason: str) -> None:
+def set_commit_status(repo_name: str, head_sha: str, allowed: bool, reason: str) -> None:
     base_url = os.environ.get("GITHUB_API_BASE_URL", "https://api.github.com")
     
-    conclusion = "success" if allowed else "failure"
+    state = "success" if allowed else "failure"
 
-    url = f"{base_url}/repos/{repo_name}/check-runs"
+    url = f"{base_url}/repos/{repo_name}/statuses/{head_sha}"
+    
+    # Truncate description to 140 chars per GitHub API limit
+    if len(reason) > 137:
+        reason = reason[:137] + "..."
+        
     requests.post(
         url,
         headers={
@@ -40,21 +45,20 @@ def set_check_run_status(repo_name: str, head_sha: str, allowed: bool, reason: s
             "Accept": "application/vnd.github.v3+json"
         },
         json={
-            "name": "Cedar Merge Gatekeeper",
-            "head_sha": head_sha,
-            "status": "completed",
-            "conclusion": conclusion,
-            "output": {
-                "title": "Action Authorized" if allowed else "Action Denied",
-                "summary": reason
-            }
+            "state": state,
+            "description": reason,
+            "context": "Cedar Merge Gatekeeper"
         },
         timeout=5,
     ).raise_for_status()
 
-def set_check_run_neutral(repo_name: str, head_sha: str, reason: str) -> None:
+def set_commit_status_neutral(repo_name: str, head_sha: str, reason: str) -> None:
     base_url = os.environ.get("GITHUB_API_BASE_URL", "https://api.github.com")
-    url = f"{base_url}/repos/{repo_name}/check-runs"
+    url = f"{base_url}/repos/{repo_name}/statuses/{head_sha}"
+    
+    if len(reason) > 137:
+        reason = reason[:137] + "..."
+        
     requests.post(
         url,
         headers={
@@ -62,17 +66,13 @@ def set_check_run_neutral(repo_name: str, head_sha: str, reason: str) -> None:
             "Accept": "application/vnd.github.v3+json"
         },
         json={
-            "name": "Cedar Merge Gatekeeper",
-            "head_sha": head_sha,
-            "status": "completed",
-            "conclusion": "neutral",
-            "output": {
-                "title": "API Degraded - Neutral Fallback",
-                "summary": reason
-            }
+            "state": "error",
+            "description": reason,
+            "context": "Cedar Merge Gatekeeper"
         },
         timeout=5,
     ).raise_for_status()
+
 
 def post_pr_comment(repo_name: str, pr_number: int, reason: str) -> None:
     base_url = os.environ.get("GITHUB_API_BASE_URL", "https://api.github.com")

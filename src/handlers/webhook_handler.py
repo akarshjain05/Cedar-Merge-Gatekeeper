@@ -216,7 +216,7 @@ def handler(event, context):
     
     # Update GitHub
     try:
-        github_client.set_check_run_status(repo_name, head_sha, result["allowed"], reason)
+        github_client.set_commit_status(repo_name, head_sha, result["allowed"], reason)
         github_client.post_pr_comment(repo_name, pr_number, reason)
     except Exception as e:
         logger.exception("Failed to update GitHub after AVP decision.")
@@ -231,7 +231,7 @@ def _notify_github_neutral(repo_name: str, head_sha: str, pr_number: int, reason
         # We need to tell the github_client to send neutral. 
         # For now, we will just post the comment. If github_client supports neutral, we call it.
         # But our github_client.set_check_run_status only takes allowed (bool). We must update it.
-        github_client.set_check_run_neutral(repo_name, head_sha, reason)
+        github_client.set_commit_status_neutral(repo_name, head_sha, reason)
         github_client.post_pr_comment(repo_name, pr_number, reason)
     except Exception:
         logger.exception("Failed to notify GitHub of neutral status.")
