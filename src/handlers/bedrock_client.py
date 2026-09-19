@@ -59,7 +59,7 @@ Output ONLY the markdown-formatted message to post on the PR. Do not include int
     
     try:
         response = _get_client().invoke_model(
-            modelId="anthropic.claude-haiku-4-5-20251001-v1:0",
+            modelId="global.anthropic.claude-haiku-4-5-20251001-v1:0",
             body=json.dumps(payload),
             contentType="application/json",
             accept="application/json"
