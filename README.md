@@ -79,6 +79,12 @@ Once you have deployed the AWS SAM stack, you can attach this gatekeeper to any 
    - **Secret**: Enter the secret string you stored in your AWS Secrets Manager (`GitHubWebhookSecret`).
    - **Which events**: Select "Let me select individual events", and check **Pull requests** and **Pull request reviews**.
 3. **Provide a GitHub Token**: Ensure your `GitHubTokenSecret` in AWS Secrets Manager contains a valid GitHub Personal Access Token (or GitHub App token) with permissions to read Pull Requests and write Check Runs/Comments.
+4. **Enforce the Gatekeeper**: This is the most critical step to actually block merges! 
+   - Go to **Settings** -> **Branches** -> **Add branch protection rule**.
+   - Set the Branch name pattern (e.g., `main`).
+   - Check **Require status checks to pass before merging**.
+   - Search for and select **Cedar Merge Gatekeeper** to make it required.
+   - Now, a `DENY` decision from AWS Verified Permissions will physically disable the "Merge pull request" button!
 
 ## AI Tool Disclosure
 In compliance with hackathon rules, we disclose the use of the following AI tools used during the planning and build process:
