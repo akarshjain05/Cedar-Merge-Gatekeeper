@@ -25,9 +25,15 @@ def fake_is_authorized(policy_store_id, principal_id, action_id, resource_id, co
     pr_author_eid  = context.get("prAuthor", {}).get("entityIdentifier", {}).get("entityId", "")
     teams_raw      = context.get("activeTeams", {}).get("set", [])
     active_teams   = [t.get("string", "") for t in teams_raw]
+    day_of_week    = context.get("dayOfWeek", {}).get("string", "")
+    is_hotfix      = context.get("isHotfix", {}).get("boolean", False)
 
     is_auth_path   = "/auth/" in changed_path or changed_path.startswith("auth/")
     is_large_pr    = total_lines > 500
+
+    # Rule 5 (forbid): No Friday Merges unless it's a hotfix by a senior engineer
+    if day_of_week == "Friday" and not (is_hotfix and "senior-engineers" in active_teams):
+        return {"allowed": False, "policy_ids": ["no-friday-merges"], "errors": []}
 
     # Rule 2 (forbid): No self-approvals
     if principal_id == pr_author_eid:
@@ -85,4 +91,4 @@ if __name__ == "__main__":
     print("🚀 Starting Cedar Merge Gatekeeper (Local Bypass Mode)")
     print("Listening on http://localhost:5001/webhook")
     print("Point ngrok to port 5001 to accept GitHub Webhooks!")
-    app.run(port=5001, debug=True)
+    app.run(port=5002, debug=True)

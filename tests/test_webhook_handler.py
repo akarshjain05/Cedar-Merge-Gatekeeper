@@ -46,6 +46,12 @@ def _stub_avp(monkeypatch, allowed: bool, policy_id: str | None = None):
     )
     monkeypatch.setattr(webhook_handler, "verify_signature", lambda e: True)
     monkeypatch.setattr(webhook_handler.github_client, "get_pr_changed_files", lambda repo, pr: ["/src/auth/login.py"])
+    
+    # Mock Bedrock AI to just return a static string for testing
+    monkeypatch.setattr(
+        webhook_handler.bedrock_client, "generate_explanation", 
+        lambda principal, policy_id, changed_path, lines_changed, decision: f"AI says {'yes' if decision == 'ALLOW' else 'no'} because of {policy_id}"
+    )
 
 
 def test_allows_security_to_approve_auth(members_table, monkeypatch):
@@ -205,3 +211,71 @@ def test_denies_non_security_to_approve_auth(members_table, monkeypatch):
     body = json.loads(response["body"])
     assert body["decision"] == "DENY"
     assert "default-deny" in body["reason"]
+
+def test_bedrock_fallback_uses_static_reason(members_table, monkeypatch):
+    _stub_avp(monkeypatch, allowed=False, policy_id="some-policy")
+    monkeypatch.setattr(webhook_handler.github_client, "set_check_run_status", lambda *a, **k: None)
+    monkeypatch.setattr(webhook_handler.github_client, "post_pr_comment", lambda *a, **k: None)
+    
+    # Force Bedrock to fail
+    monkeypatch.setattr(webhook_handler.bedrock_client, "generate_explanation", lambda *args, **kwargs: None)
+
+    with open("tests/fixtures/real_pr_payload.json", "r") as f:
+        payload = json.load(f)
+    
+    event = {"body": json.dumps(payload)}
+    response = webhook_handler.handler(event, None)
+
+    assert response["statusCode"] == 200
+    body = json.loads(response["body"])
+    assert body["decision"] == "DENY"
+    # Should use the static fallback message
+    assert "Ask another reviewer to approve or check team permissions" in body["reason"]
+
+def test_bedrock_ai_reason_used(members_table, monkeypatch):
+    _stub_avp(monkeypatch, allowed=False, policy_id="some-policy")
+    monkeypatch.setattr(webhook_handler.github_client, "set_check_run_status", lambda *a, **k: None)
+    monkeypatch.setattr(webhook_handler.github_client, "post_pr_comment", lambda *a, **k: None)
+    
+    with open("tests/fixtures/real_pr_payload.json", "r") as f:
+        payload = json.load(f)
+    
+    event = {"body": json.dumps(payload)}
+    response = webhook_handler.handler(event, None)
+
+    assert response["statusCode"] == 200
+    body = json.loads(response["body"])
+    assert body["decision"] == "DENY"
+    assert "Gatekeeper AI:** AI says no because of some-policy" in body["reason"]
+
+def test_merge_action_path(members_table, monkeypatch):
+    """Proves the webhook_handler correctly delegates PR closed/merged events to the mergePR Cedar action."""
+    monkeypatch.setattr(webhook_handler, "verify_signature", lambda e: True)
+    monkeypatch.setattr(webhook_handler.github_client, "get_pr_changed_files", lambda repo, pr: ["/src/main.py"])
+    monkeypatch.setattr(webhook_handler.github_client, "set_check_run_status", lambda *a, **k: None)
+    monkeypatch.setattr(webhook_handler.github_client, "post_pr_comment", lambda *a, **k: None)
+    monkeypatch.setattr(webhook_handler.bedrock_client, "generate_explanation", lambda *a, **k: "AI Reason")
+
+    called_action = []
+
+    def mock_is_authorized(**kwargs):
+        called_action.append(kwargs.get("action_id"))
+        return {"allowed": True, "policy_ids": ["engineering-default"], "errors": []}
+        
+    monkeypatch.setattr(webhook_handler.avp_client, "is_authorized", mock_is_authorized)
+
+    with open("tests/fixtures/real_pr_payload.json", "r") as f:
+        payload = json.load(f)
+    
+    # Mutate the payload to simulate a PR merge
+    payload["action"] = "closed"
+    payload.pop("review", None)
+    payload["pull_request"]["merged"] = True
+    payload["pull_request"]["user"]["login"] = "alice"
+    payload["sender"]["login"] = "test-user"
+    
+    event = {"body": json.dumps(payload)}
+    response = webhook_handler.handler(event, None)
+
+    assert response["statusCode"] == 200
+    assert called_action == ["mergePR"]

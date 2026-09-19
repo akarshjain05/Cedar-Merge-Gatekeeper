@@ -17,7 +17,8 @@ def handler(event, context):
         dynamodb = boto3.resource("dynamodb")
         table = dynamodb.Table(os.environ["DECISIONS_TABLE_NAME"])
         response = table.scan()
-        items = response.get("Item", response.get("Items", []))
+        items = response.get("Items", [])
+        items.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
         
         return {
             "statusCode": 200,

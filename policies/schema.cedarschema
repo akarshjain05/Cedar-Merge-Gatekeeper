@@ -11,7 +11,9 @@ action approvePR appliesTo {
     changedPath: String,
     totalLinesChanged: Long,
     prAuthor: GitHubUser,
-    activeTeams: Set<String>
+    activeTeams: Set<String>,
+    dayOfWeek: String,
+    isHotfix: Bool
   }
 };
 
@@ -22,7 +24,9 @@ action mergePR appliesTo {
     changedPath: String,
     totalLinesChanged: Long,
     prAuthor: GitHubUser,
-    activeTeams: Set<String>
+    activeTeams: Set<String>,
+    dayOfWeek: String,
+    isHotfix: Bool
   }
 };
 
