@@ -31,18 +31,19 @@ def generate_explanation(principal: str, policy_id: str, changed_path: str, line
 
 Details:
 - Engineer (Principal): {principal}
-- Determining Policy ID: {policy_id}
 - Sensitive path changed (if any): {changed_path}
 - Total lines changed: {lines_changed}
+- Determining Policy ID (AWS auto-generated hash): {policy_id}
 
-Known policy context:
-- 'security-owns-auth': Only the security-team can approve changes to /src/auth/*
-- 'no-self-approval': Authors cannot approve or merge their own pull requests.
-- 'large-pr-requires-senior': PRs over 500 lines require someone from senior-engineers.
-- 'engineering-default': Standard engineers can approve non-auth PRs under 500 lines.
-- 'default-deny': If no specific permit policy matched, it defaults to deny.
+Known policies:
+- security-owns-auth: Only the security-team can approve changes to /src/auth/*
+- no-self-approval: Authors cannot approve or merge their own pull requests.
+- large-pr-requires-senior: PRs over 500 lines require someone from senior-engineers.
+- engineering-default: Standard engineers can approve non-auth PRs under 500 lines.
+- default-deny: If no specific permit policy matched, it defaults to deny.
 
-Output ONLY the markdown-formatted message to post on the PR. Do not include introductory text like "Here is the message:"
+Based on the Details above, carefully deduce exactly WHICH of these known policies triggered this {decision} decision, and clearly explain why to the engineer.
+Output ONLY the markdown-formatted message to post on the PR. Do not include introductory text.
 """
 
     try:
