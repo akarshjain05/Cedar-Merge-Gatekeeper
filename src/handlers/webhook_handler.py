@@ -113,6 +113,16 @@ def handler(event, context):
         # When a PR Review is submitted, the webhook payload often omits additions/deletions. 
         # We must explicitly fetch it from GitHub to prevent 0-line bypasses.
         lines_changed = github_client.get_pr_line_count(repo_name, pr_number)
+        
+        # Fetch all approvers to prevent the "last approver wins" overwrite bug
+        approvers = []
+        if action_id == "approvePR":
+            approvers = github_client.get_pr_approvers(repo_name, pr_number)
+            if sender not in approvers:
+                approvers.append(sender)
+        else:
+            approvers = [sender]
+            
     except Exception as e:
         decision_log = {
             "principal": sender,
@@ -130,14 +140,13 @@ def handler(event, context):
         _notify_github_neutral(repo_name, head_sha, pr_number, reason)
         return {"statusCode": 200, "body": "Degraded - GitHub API Failure"}
 
-    teams = team_repository.get_teams_for_user(sender)
     resource_id = f"{repo_name}#{pr_number}"
 
     pr_title = pr.get("title", "")
     day_of_week = datetime.now(timezone.utc).strftime("%A")
     is_hotfix = "[HOTFIX]" in pr_title.upper()
 
-    # 2. AVP Failure Resilience & Multi-file Evaluation
+    # 2. AVP Failure Resilience & Multi-file Multi-Approver Evaluation
     try:
         final_result = None
         final_changed_path = None
@@ -145,28 +154,41 @@ def handler(event, context):
         if not files:
             files = ["/unknown"]
 
-        # Evaluate every file. Deny immediately if any file fails.
+        # Evaluate every file against every approver
         for f in files:
             normalized_f = f if f.startswith("/") else f"/{f}"
-            result = avp_client.is_authorized(
-                policy_store_id=os.environ.get("POLICY_STORE_ID", "store"),
-                principal_id=sender,
-                action_id=action_id,
-                resource_id=resource_id,
-                context={
-                    "changedPath": {"string": normalized_f},
-                    "totalLinesChanged": {"long": lines_changed},
-                    "prAuthor": {"entityIdentifier": {"entityType": "CedarGatekeeper::GitHubUser", "entityId": author}},
-                    "activeTeams": {"set": [{"string": t} for t in teams]},
-                    "dayOfWeek": {"string": day_of_week},
-                    "isHotfix": {"boolean": is_hotfix},
-                },
-            )
-            final_result = result
+            file_allowed = False
+            file_result = None
+            
+            # A file is approved if ANY approver is authorized to approve it
+            for approver in approvers:
+                teams = team_repository.get_teams_for_user(approver)
+                
+                result = avp_client.is_authorized(
+                    policy_store_id=os.environ.get("POLICY_STORE_ID", "store"),
+                    principal_id=approver,
+                    action_id=action_id,
+                    resource_id=resource_id,
+                    context={
+                        "changedPath": {"string": normalized_f},
+                        "totalLinesChanged": {"long": lines_changed},
+                        "prAuthor": {"entityIdentifier": {"entityType": "CedarGatekeeper::GitHubUser", "entityId": author}},
+                        "activeTeams": {"set": [{"string": t} for t in teams]},
+                        "dayOfWeek": {"string": day_of_week},
+                        "isHotfix": {"boolean": is_hotfix},
+                    },
+                )
+                file_result = result
+                
+                if result["allowed"]:
+                    file_allowed = True
+                    break # We found a valid approver for this file!
+                    
+            final_result = file_result
             final_changed_path = normalized_f
             
-            # If Cedar denies this specific file, stop evaluating and reject the PR
-            if not result["allowed"]:
+            # If NO approver is allowed to approve this specific file, stop evaluating and reject the PR
+            if not file_allowed:
                 break
                 
         result = final_result

@@ -106,6 +106,36 @@ def get_pr_line_count(repo_name: str, pr_number: int) -> int:
     data = response.json()
     return data.get("additions", 0) + data.get("deletions", 0)
 
+def get_pr_approvers(repo_name: str, pr_number: int) -> list[str]:
+    """Fetches all users who have submitted an APPROVED review for the PR."""
+    base_url = os.environ.get("GITHUB_API_BASE_URL", "https://api.github.com")
+    url = f"{base_url}/repos/{repo_name}/pulls/{pr_number}/reviews"
+    
+    approvers = set()
+    headers = {
+        "Authorization": f"Bearer {_get_token()}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    
+    while url:
+        response = requests.get(url, headers=headers, timeout=5)
+        response.raise_for_status()
+        
+        for review in response.json():
+            if review.get("state") == "APPROVED" and review.get("user"):
+                approvers.add(review["user"]["login"])
+                
+        # Handle GitHub API pagination
+        url = None
+        if "Link" in response.headers:
+            links = response.headers["Link"].split(",")
+            for link in links:
+                if 'rel="next"' in link:
+                    url = link[link.find("<")+1:link.find(">")]
+                    break
+                    
+    return list(approvers)
+
 def get_pr_changed_files(repo_name: str, pr_number: int) -> list[str]:
     """Fetches all changed file paths for a PR, handling pagination."""
     base_url = os.environ.get("GITHUB_API_BASE_URL", "https://api.github.com")
