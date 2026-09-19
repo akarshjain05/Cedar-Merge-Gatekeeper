@@ -3,30 +3,46 @@ import boto3
 import logging
 
 logger = logging.getLogger()
-logger.setLevel(logging.INFO)
 
-_bedrock_client = None
+_client = None
 
 def _get_client():
-    global _bedrock_client
-    if _bedrock_client is None:
-        _bedrock_client = boto3.client("bedrock-runtime")
-    return _bedrock_client
+    global _client
+    if _client is None:
+        _client = boto3.client("bedrock-runtime", region_name="us-east-1")
+    return _client
 
-def generate_explanation(principal: str, policy_id: str, changed_path: str, action: str, allowed: bool, reason: str) -> str:
+def generate_explanation(principal: str, policy_id: str, changed_path: str, lines_changed: int, decision: str) -> str:
     """
-    Uses Amazon Nova (first-party model to bypass Marketplace payment issues) to generate a human-readable explanation.
+    Uses Anthropic Claude 3 Haiku via Amazon Bedrock to generate a friendly, 
+    helpful explanation for why a PR merge was allowed or denied based on the Cedar policy.
     """
-    decision = "ALLOW" if allowed else "DENY"
-    prompt = f"""
-Explain this Cedar policy decision to a developer in one short, friendly paragraph.
-Decision: {decision}
-Policy Reason: {reason}
-Principal: {principal}
-Action: {action}
-Resource: {changed_path}
+    
+    if decision == "ALLOW":
+        scenario_text = "A pull request approval was just ALLOWED by our AWS Verified Permissions (Cedar) authorization engine."
+        task_text = "Please write a short, friendly, congratulatory message to the engineer explaining that their approval passed."
+    else:
+        scenario_text = "A pull request was just DENIED by our AWS Verified Permissions (Cedar) authorization engine."
+        task_text = "Please explain to the engineer why it was denied and what they should do next."
 
-Format it using GitHub markdown. Keep it under 3 sentences. Be clear if it was allowed or denied.
+    prompt = f"""You are a helpful, senior DevOps assistant named Gatekeeper AI.
+{scenario_text}
+{task_text} Keep it concise, friendly, and under 4 sentences.
+
+Details:
+- Engineer (Principal): {principal}
+- Determining Policy ID: {policy_id}
+- Sensitive path changed (if any): {changed_path}
+- Total lines changed: {lines_changed}
+
+Known policy context:
+- 'security-owns-auth': Only the security-team can approve changes to /src/auth/*
+- 'no-self-approval': Authors cannot approve or merge their own pull requests.
+- 'large-pr-requires-senior': PRs over 500 lines require someone from senior-engineers.
+- 'engineering-default': Standard engineers can approve non-auth PRs under 500 lines.
+- 'default-deny': If no specific permit policy matched, it defaults to deny.
+
+Output ONLY the markdown-formatted message to post on the PR. Do not include introductory text like "Here is the message:"
 """
 
     try:
@@ -36,12 +52,9 @@ Format it using GitHub markdown. Keep it under 3 sentences. Be clear if it was a
                 "role": "user",
                 "content": [{"text": prompt}]
             }],
-            system=[{"text": "You are a friendly GitHub security auditor explaining why a PR was approved or denied based on Cedar policies."}],
-            inferenceConfig={"maxTokens": 300}
+            inferenceConfig={"maxTokens": 300, "temperature": 0.4}
         )
-        return response['output']['message']['content'][0]['text']
+        return response['output']['message']['content'][0]['text'].strip()
     except Exception as e:
-        logger.error(f"Bedrock invocation failed: {str(e)}")
-        # Graceful fallback if Bedrock is unreachable
-        icon = "✅" if allowed else "❌"
-        return f"{icon} **Merge check passed** — `{reason}` permitted this approval.\n`{principal}` is authorized to approve this PR."
+        logger.error(f"Bedrock invocation failed: {e}")
+        return None
