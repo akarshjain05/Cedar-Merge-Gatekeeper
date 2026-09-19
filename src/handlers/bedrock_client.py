@@ -13,18 +13,18 @@ def _get_client():
         _bedrock_client = boto3.client("bedrock-runtime")
     return _bedrock_client
 
-def generate_ai_explanation(decision: str, reason: str, principal: str, action: str, resource: str, context: dict = None) -> str:
+def generate_explanation(principal: str, policy_id: str, changed_path: str, action: str, allowed: bool, reason: str) -> str:
     """
     Uses Amazon Nova (first-party model to bypass Marketplace payment issues) to generate a human-readable explanation.
     """
+    decision = "ALLOW" if allowed else "DENY"
     prompt = f"""
 Explain this Cedar policy decision to a developer in one short, friendly paragraph.
 Decision: {decision}
 Policy Reason: {reason}
 Principal: {principal}
 Action: {action}
-Resource: {resource}
-Context: {json.dumps(context) if context else 'None'}
+Resource: {changed_path}
 
 Format it using GitHub markdown. Keep it under 3 sentences. Be clear if it was allowed or denied.
 """
@@ -43,5 +43,5 @@ Format it using GitHub markdown. Keep it under 3 sentences. Be clear if it was a
     except Exception as e:
         logger.error(f"Bedrock invocation failed: {str(e)}")
         # Graceful fallback if Bedrock is unreachable
-        icon = "✅" if decision == "ALLOW" else "❌"
+        icon = "✅" if allowed else "❌"
         return f"{icon} **Merge check passed** — `{reason}` permitted this approval.\n`{principal}` is authorized to approve this PR."
