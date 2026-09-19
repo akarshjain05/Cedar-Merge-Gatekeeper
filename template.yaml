@@ -29,10 +29,15 @@ Resources:
     Type: AWS::Serverless::Api
     Properties:
       StageName: prod
+      Cors:
+        AllowMethods: "'GET,POST,OPTIONS'"
+        AllowHeaders: "'Content-Type,X-Hub-Signature-256'"
+        AllowOrigin: "'*'"
 
   WebhookFunction:
     Type: AWS::Serverless::Function
     Properties:
+      Timeout: 30
       CodeUri: src/
       Handler: handlers.webhook_handler.handler
       Events:
@@ -54,8 +59,15 @@ Resources:
                 - !Ref GitHubTokenSecret
                 - !Ref GitHubWebhookSecret
             - Effect: Allow
-              Action: verifiedpermissions:IsAuthorized
-              Resource: !GetAtt GatekeeperPolicyStore.Arn
+              Action: 
+                - verifiedpermissions:IsAuthorized
+                - verifiedpermissions:GetPolicy
+              Resource: 
+                - !GetAtt GatekeeperPolicyStore.Arn
+                - !Sub "${GatekeeperPolicyStore.Arn}/*"
+            - Effect: Allow
+              Action: bedrock:InvokeModel
+              Resource: "*"
 
   DashboardFunction:
     Type: AWS::Serverless::Function

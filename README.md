@@ -17,10 +17,18 @@ Three people feel the difference directly when using this Gatekeeper:
 The scope is deliberately narrow. That's the point: the live policy-edit-and-reflip we demo is the exact action a security lead would take mid-incident, not a staged trick.
 
 ## Security & Resilience Features
-- **Strict Event Gating**: The gatekeeper ignores standard PR open/synchronize noise, safely triggering authorization evaluation *only* when a `pull_request_review` approval or a direct `merge` is submitted.
-- **Fail-Closed API Fallbacks**: If the GitHub API rate-limits the Lambda or AWS Verified Permissions goes down, the gatekeeper falls back to a secure `NEUTRAL` degraded state (rather than failing open).
+- **Strict Event Gating & Idempotency**: The gatekeeper ignores standard PR open/synchronize noise, safely triggering authorization evaluation *only* when a `pull_request_review` approval or a direct `merge` is submitted. Redelivered webhooks are caught via an `X-GitHub-Delivery` conditional-check lock in DynamoDB, ensuring exactly-once processing.
+- **Fail-Closed API Fallbacks**: If the GitHub API rate-limits the Lambda or AWS Verified Permissions goes down, the gatekeeper falls back to a secure `NEUTRAL` degraded state in GitHub Check Runs (rather than failing open).
 - **Exact Path Matching**: Python path validation accurately normalizes and enforces absolute path prefixing to ensure 1:1 parity with the Cedar `like "/src/auth/*"` schemas, preventing false-positive bypassed checks.
 - **HMAC Hardened**: Full request signature validation verified comprehensively in unit tests.
+- **Strict IAM Scoping**: Lambda execution roles aren't wildcards. DynamoDB reads/writes are strictly scoped to the exact table ARNs, Secrets Manager calls are scoped to the exact token ARNs, and AWS Verified Permissions `IsAuthorized` calls are scoped exclusively to `!GetAtt GatekeeperPolicyStore.Arn`.
+
+## Advanced ABAC Cedar Rules Implemented
+1. **Security Team Owns Auth**: Only members of `security-team` can approve/merge PRs touching `/src/auth/*`.
+2. **Strict Ban on Self-Approvals**: `forbid` rules always override `permit` rules. Even if a Security Team member approves a `/src/auth/` PR, if they authored the PR, it is strictly blocked. (Explicitly proven in our unit test suite).
+3. **General Engineers**: Can approve/merge anything outside of auth.
+4. **Large PRs**: Any PR changing >500 lines mandates a `senior-engineers` approval.
+5. **No Friday Merges**: Forbids Friday merges unless the PR is an explicit `isHotfix` AND the actor is a `senior-engineers` member.
 
 ## Learning
 
@@ -40,8 +48,9 @@ Coming into this build from a mostly FastAPI/PostgreSQL/Docker background, most 
 4. **Lambda** constructs a request context and queries **AWS Verified Permissions** (Cedar) for authorization.
 5. **Verified Permissions** returns an `ALLOW` or explicit `DENY` decision, attaching the specific policy ID that triggered the denial.
 6. **Lambda** writes the decision to a secondary **DynamoDB Decisions Table**.
-7. **Lambda** updates the GitHub PR Check-Run status (success/neutral/failure) and posts a markdown comment explaining the exact reason.
-8. A **Serverless UI Dashboard** (securely hosted on **AWS Amplify**) reads from the Decisions Table to visualize metrics via Chart.js.
+7. **Lambda** invokes **Amazon Bedrock (Claude 3 Haiku)** to generate a plain-English explanation for why the PR was approved or blocked, citing the exact Cedar policy.
+8. **Lambda** updates the modern **GitHub PR Check-Runs API** (success/neutral/failure) and attaches the rich AI explanation payload to the Check Run output.
+9. A **Serverless UI Dashboard** (securely hosted on **AWS Amplify**) reads from the Decisions Table to visualize live metrics via Chart.js, chronologically sorted.
 
 ## Running it
 
@@ -58,6 +67,18 @@ make build && make deploy
 # 4. Load Cedar schemas and policies into Verified Permissions
 make load-policies
 ```
+
+## How to use this on your own GitHub Repository
+Once you have deployed the AWS SAM stack, you can attach this gatekeeper to any GitHub repository:
+
+1. **Get your API URL**: After running `make deploy`, note the `ApiUrl` in the CloudFormation output.
+2. **Add the Webhook in GitHub**: 
+   - Navigate to your repository on GitHub -> **Settings** -> **Webhooks** -> **Add webhook**.
+   - **Payload URL**: Paste your `ApiUrl`.
+   - **Content type**: Select `application/json`.
+   - **Secret**: Enter the secret string you stored in your AWS Secrets Manager (`GitHubWebhookSecret`).
+   - **Which events**: Select "Let me select individual events", and check **Pull requests** and **Pull request reviews**.
+3. **Provide a GitHub Token**: Ensure your `GitHubTokenSecret` in AWS Secrets Manager contains a valid GitHub Personal Access Token (or GitHub App token) with permissions to read Pull Requests and write Check Runs/Comments.
 
 ## AI Tool Disclosure
 In compliance with hackathon rules, we disclose the use of the following AI tools used during the planning and build process:

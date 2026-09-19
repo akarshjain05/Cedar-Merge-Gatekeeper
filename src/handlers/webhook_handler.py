@@ -7,7 +7,7 @@ import json
 import os
 import logging
 
-from . import avp_client, team_repository, github_client
+from . import avp_client, team_repository, github_client, bedrock_client
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -19,14 +19,14 @@ import uuid
 from datetime import datetime, timezone
 import boto3
 
-def _log_decision_to_db(decision_log: dict):
+def _log_decision_to_db(decision_log: dict, delivery_id: str):
     try:
         table_name = os.environ.get("DECISIONS_TABLE_NAME")
         if table_name:
             dynamodb = boto3.resource("dynamodb")
             table = dynamodb.Table(table_name)
             
-            decision_log["id"] = str(uuid.uuid4())
+            decision_log["id"] = delivery_id
             decision_log["timestamp"] = datetime.now(timezone.utc).isoformat()
             
             table.put_item(Item=decision_log)
@@ -35,7 +35,8 @@ def _log_decision_to_db(decision_log: dict):
 
 def verify_signature(event):
     secret = github_client.get_webhook_secret().encode("utf-8")
-    signature_header = event.get("headers", {}).get("X-Hub-Signature-256", "")
+    headers = event.get("headers", {})
+    signature_header = next((v for k, v in headers.items() if k.lower() == "x-hub-signature-256"), "")
     if not signature_header:
         return False
         
@@ -51,6 +52,25 @@ def handler(event, context):
     if not verify_signature(event):
         return {"statusCode": 401, "body": "Unauthorized"}
         
+    headers = event.get("headers", {})
+    delivery_id = next((v for k, v in headers.items() if k.lower() == "x-github-delivery"), str(uuid.uuid4()))
+
+    table_name = os.environ.get("DECISIONS_TABLE_NAME")
+    if table_name:
+        dynamodb = boto3.resource("dynamodb")
+        table = dynamodb.Table(table_name)
+        try:
+            table.put_item(
+                Item={"id": delivery_id, "timestamp": datetime.now(timezone.utc).isoformat(), "status": "PROCESSING"},
+                ConditionExpression="attribute_not_exists(id)"
+            )
+        except Exception as e:
+            if "ConditionalCheckFailedException" in str(e.__class__.__name__):
+                logger.info(f"Idempotency hit: delivery {delivery_id} already processed.")
+                return {"statusCode": 200, "body": "Already processed"}
+            else:
+                logger.error(f"DynamoDB error during idempotency check: {e}")
+
     try:
         body = json.loads(event.get("body", "{}"))
     except json.JSONDecodeError:
@@ -100,7 +120,7 @@ def handler(event, context):
             "error": str(e)
         }
         logger.error(json.dumps(decision_log))
-        _log_decision_to_db(decision_log)
+        _log_decision_to_db(decision_log, delivery_id)
         
         reason = "⚠️ **Merge check degraded** — Unable to fetch changed files from GitHub due to API limits or errors."
         _notify_github_neutral(repo_name, head_sha, pr_number, reason)
@@ -119,6 +139,10 @@ def handler(event, context):
     teams = team_repository.get_teams_for_user(sender)
     resource_id = f"{repo_name}#{pr_number}"
 
+    pr_title = pr.get("title", "")
+    day_of_week = datetime.now(timezone.utc).strftime("%A")
+    is_hotfix = "[HOTFIX]" in pr_title.upper()
+
     # 2. AVP Failure Resilience
     try:
         result = avp_client.is_authorized(
@@ -131,37 +155,10 @@ def handler(event, context):
                 "totalLinesChanged": {"long": lines_changed},
                 "prAuthor": {"entityIdentifier": {"entityType": "CedarGatekeeper::GitHubUser", "entityId": author}},
                 "activeTeams": {"set": [{"string": t} for t in teams]},
+                "dayOfWeek": {"string": day_of_week},
+                "isHotfix": {"boolean": is_hotfix},
             },
         )
-        if result.get("errors"):
-            logger.warning(f"AVP Evaluation Errors: {result['errors']}")
-            
-        decision = "ALLOW" if result["allowed"] else "DENY"
-        policy_id = result['policy_ids'][0] if result.get('policy_ids') else "default-deny"
-        
-        if result["allowed"]:
-            reason = f"✅ **Merge check passed** — `{policy_id}` permitted this approval.\n`{sender}` is authorized to approve this PR."
-        else:
-            reason = f"🚫 **Merge check failed** — policy `{policy_id}` denied this request.\nAsk another reviewer to approve or check team permissions."
-            
-        decision_log = {
-            "principal": sender,
-            "action": action_id,
-            "resource": resource_id,
-            "verdict": decision,
-            "policyId": policy_id,
-            "reason": reason
-        }
-        
-        logger.info(json.dumps(decision_log))
-        
-        # Write directly to the fallback DynamoDB decisions table
-        _log_decision_to_db(decision_log)
-        
-        # Update GitHub
-        github_client.set_check_run_status(repo_name, head_sha, result["allowed"], reason)
-        github_client.post_pr_comment(repo_name, pr_number, reason)
-
     except Exception as e:
         decision_log = {
             "principal": sender,
@@ -173,11 +170,56 @@ def handler(event, context):
             "error": str(e)
         }
         logger.error(json.dumps(decision_log))
-        _log_decision_to_db(decision_log)
+        _log_decision_to_db(decision_log, delivery_id)
         
         reason = "⚠️ **Merge check degraded** — Unable to reach AWS Verified Permissions. Please try again later or contact an administrator."
         _notify_github_neutral(repo_name, head_sha, pr_number, reason)
         return {"statusCode": 200, "body": "Degraded - AVP Failure"}
+
+    if result.get("errors"):
+        logger.warning(f"AVP Evaluation Errors: {result['errors']}")
+        
+    decision = "ALLOW" if result["allowed"] else "DENY"
+    policy_id = result['policy_ids'][0] if result.get('policy_ids') else "default-deny"
+    ai_reason = bedrock_client.generate_explanation(
+        principal=sender,
+        policy_id=policy_id,
+        changed_path=changed_path,
+        lines_changed=lines_changed,
+        decision=decision
+    )
+    
+    if result["allowed"]:
+        if ai_reason:
+            reason = f"✅ **Merge check passed**\n\n**Gatekeeper AI:** {ai_reason}"
+        else:
+            reason = f"✅ **Merge check passed** — `{policy_id}` permitted this approval.\n`{sender}` is authorized to approve this PR."
+    else:
+        if ai_reason:
+            reason = f"🚫 **Merge check failed**\n\n**Gatekeeper AI:** {ai_reason}"
+        else:
+            reason = f"🚫 **Merge check failed** — policy `{policy_id}` denied this request.\nAsk another reviewer to approve or check team permissions."
+        
+    decision_log = {
+        "principal": sender,
+        "action": action_id,
+        "resource": resource_id,
+        "verdict": decision,
+        "policyId": policy_id,
+        "reason": reason
+    }
+    
+    logger.info(json.dumps(decision_log))
+    
+    # Write directly to the fallback DynamoDB decisions table
+    _log_decision_to_db(decision_log, delivery_id)
+    
+    # Update GitHub
+    try:
+        github_client.set_commit_status(repo_name, head_sha, result["allowed"], reason)
+        github_client.post_pr_comment(repo_name, pr_number, reason)
+    except Exception as e:
+        logger.exception("Failed to update GitHub after AVP decision.")
 
     return {
         "statusCode": 200,
@@ -189,7 +231,7 @@ def _notify_github_neutral(repo_name: str, head_sha: str, pr_number: int, reason
         # We need to tell the github_client to send neutral. 
         # For now, we will just post the comment. If github_client supports neutral, we call it.
         # But our github_client.set_check_run_status only takes allowed (bool). We must update it.
-        github_client.set_check_run_neutral(repo_name, head_sha, reason)
+        github_client.set_commit_status_neutral(repo_name, head_sha, reason)
         github_client.post_pr_comment(repo_name, pr_number, reason)
     except Exception:
         logger.exception("Failed to notify GitHub of neutral status.")

@@ -37,3 +37,14 @@ when {
   context.totalLinesChanged > 500 &&
   !(context.activeTeams.contains("senior-engineers"))
 };
+
+// Rule 5: No Friday Merges unless it's a hotfix by a senior engineer
+forbid (
+  principal,
+  action in [CedarGatekeeper::Action::"approvePR", CedarGatekeeper::Action::"mergePR"],
+  resource
+)
+when { 
+  context.dayOfWeek == "Friday" && 
+  !(context.isHotfix && context.activeTeams.contains("senior-engineers"))
+};
