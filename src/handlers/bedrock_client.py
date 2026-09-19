@@ -3,69 +3,45 @@ import boto3
 import logging
 
 logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
-_client = None
+_bedrock_client = None
 
 def _get_client():
-    global _client
-    if _client is None:
-        _client = boto3.client("bedrock-runtime", region_name="us-east-1")
-    return _client
+    global _bedrock_client
+    if _bedrock_client is None:
+        _bedrock_client = boto3.client("bedrock-runtime")
+    return _bedrock_client
 
-def generate_explanation(principal: str, policy_id: str, changed_path: str, lines_changed: int, decision: str) -> str:
+def generate_ai_explanation(decision: str, reason: str, principal: str, action: str, resource: str, context: dict = None) -> str:
     """
-    Uses Anthropic Claude 3 Haiku via Amazon Bedrock to generate a friendly, 
-    helpful explanation for why a PR merge was allowed or denied based on the Cedar policy.
+    Uses Amazon Nova (first-party model to bypass Marketplace payment issues) to generate a human-readable explanation.
     """
-    
-    if decision == "ALLOW":
-        scenario_text = "A pull request approval was just ALLOWED by our AWS Verified Permissions (Cedar) authorization engine."
-        task_text = "Please write a short, friendly, congratulatory message to the engineer explaining that their approval passed."
-    else:
-        scenario_text = "A pull request was just DENIED by our AWS Verified Permissions (Cedar) authorization engine."
-        task_text = "Please explain to the engineer why it was denied and what they should do next."
+    prompt = f"""
+Explain this Cedar policy decision to a developer in one short, friendly paragraph.
+Decision: {decision}
+Policy Reason: {reason}
+Principal: {principal}
+Action: {action}
+Resource: {resource}
+Context: {json.dumps(context) if context else 'None'}
 
-    prompt = f"""You are a helpful, senior DevOps assistant named Gatekeeper AI.
-{scenario_text}
-{task_text} Keep it concise, friendly, and under 4 sentences.
-
-Details:
-- Engineer (Principal): {principal}
-- Determining Policy ID: {policy_id}
-- Sensitive path changed (if any): {changed_path}
-- Total lines changed: {lines_changed}
-
-Known policy context:
-- 'security-owns-auth': Only the security-team can approve changes to /src/auth/*
-- 'no-self-approval': Authors cannot approve or merge their own pull requests.
-- 'large-pr-requires-senior': PRs over 500 lines require someone from senior-engineers.
-- 'engineering-default': Standard engineers can approve non-auth PRs under 500 lines.
-- 'default-deny': If no specific permit policy matched, it defaults to deny.
-
-Output ONLY the markdown-formatted message to post on the PR. Do not include introductory text like "Here is the message:"
+Format it using GitHub markdown. Keep it under 3 sentences. Be clear if it was allowed or denied.
 """
 
-    payload = {
-        "anthropic_version": "bedrock-2023-05-31",
-        "max_tokens": 300,
-        "messages": [
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ],
-        "temperature": 0.4
-    }
-    
     try:
-        response = _get_client().invoke_model(
-            modelId="global.anthropic.claude-haiku-4-5-20251001-v1:0",
-            body=json.dumps(payload),
-            contentType="application/json",
-            accept="application/json"
+        response = _get_client().converse(
+            modelId="amazon.nova-lite-v1:0",
+            messages=[{
+                "role": "user",
+                "content": [{"text": prompt}]
+            }],
+            system=[{"text": "You are a friendly GitHub security auditor explaining why a PR was approved or denied based on Cedar policies."}],
+            inferenceConfig={"maxTokens": 300}
         )
-        response_body = json.loads(response.get("body").read())
-        return response_body["content"][0]["text"].strip()
+        return response['output']['message']['content'][0]['text']
     except Exception as e:
-        logger.error(f"Bedrock invocation failed: {e}")
-        return None
+        logger.error(f"Bedrock invocation failed: {str(e)}")
+        # Graceful fallback if Bedrock is unreachable
+        icon = "✅" if decision == "ALLOW" else "❌"
+        return f"{icon} **Merge check passed** — `{reason}` permitted this approval.\n`{principal}` is authorized to approve this PR."
