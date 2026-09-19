@@ -45,27 +45,16 @@ Known policy context:
 Output ONLY the markdown-formatted message to post on the PR. Do not include introductory text like "Here is the message:"
 """
 
-    payload = {
-        "anthropic_version": "bedrock-2023-05-31",
-        "max_tokens": 300,
-        "messages": [
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ],
-        "temperature": 0.4
-    }
-    
     try:
-        response = _get_client().invoke_model(
-            modelId="anthropic.claude-haiku-4-5-20251001-v1:0",
-            body=json.dumps(payload),
-            contentType="application/json",
-            accept="application/json"
+        response = _get_client().converse(
+            modelId="amazon.nova-lite-v1:0",
+            messages=[{
+                "role": "user",
+                "content": [{"text": prompt}]
+            }],
+            inferenceConfig={"maxTokens": 300, "temperature": 0.4}
         )
-        response_body = json.loads(response.get("body").read())
-        return response_body["content"][0]["text"].strip()
+        return response['output']['message']['content'][0]['text'].strip()
     except Exception as e:
         logger.error(f"Bedrock invocation failed: {e}")
         return None
