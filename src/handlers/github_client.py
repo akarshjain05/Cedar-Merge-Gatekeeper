@@ -34,7 +34,8 @@ def set_commit_status(repo_name: str, head_sha: str, allowed: bool, reason: str)
 
     url = f"{base_url}/repos/{repo_name}/statuses/{head_sha}"
     
-    # Truncate description to 140 chars per GitHub API limit
+    # Truncate description to 140 chars per GitHub API limit and remove newlines (causes 422)
+    reason = reason.replace("\n", " ")
     if len(reason) > 137:
         reason = reason[:137] + "..."
         
@@ -56,6 +57,7 @@ def set_commit_status_neutral(repo_name: str, head_sha: str, reason: str) -> Non
     base_url = os.environ.get("GITHUB_API_BASE_URL", "https://api.github.com")
     url = f"{base_url}/repos/{repo_name}/statuses/{head_sha}"
     
+    reason = reason.replace("\n", " ")
     if len(reason) > 137:
         reason = reason[:137] + "..."
         

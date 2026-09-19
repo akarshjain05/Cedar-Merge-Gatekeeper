@@ -214,9 +214,12 @@ def handler(event, context):
     # Write directly to the fallback DynamoDB decisions table
     _log_decision_to_db(decision_log, delivery_id)
     
+    # The commit status UI needs a short string without markdown
+    short_status = "Approved by Gatekeeper AI" if result["allowed"] else "Denied by Gatekeeper AI"
+    
     # Update GitHub
     try:
-        github_client.set_commit_status(repo_name, head_sha, result["allowed"], reason)
+        github_client.set_commit_status(repo_name, head_sha, result["allowed"], short_status)
         github_client.post_pr_comment(repo_name, pr_number, reason)
     except Exception as e:
         logger.exception("Failed to update GitHub after AVP decision.")
