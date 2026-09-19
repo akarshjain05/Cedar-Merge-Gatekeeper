@@ -48,7 +48,7 @@ Coming into this build from a mostly FastAPI/PostgreSQL/Docker background, most 
 4. **Lambda** constructs a request context and queries **AWS Verified Permissions** (Cedar) for authorization.
 5. **Verified Permissions** returns an `ALLOW` or explicit `DENY` decision, attaching the specific policy ID that triggered the denial.
 6. **Lambda** writes the decision to a secondary **DynamoDB Decisions Table**.
-7. **Lambda** invokes **Amazon Bedrock (Claude 3 Haiku)** to generate a plain-English explanation for why the PR was approved or blocked, citing the exact Cedar policy.
+7. **Lambda** invokes **Amazon Bedrock (Amazon Nova Lite)** to generate a plain-English explanation for why the PR was approved or blocked, citing the exact Cedar policy.
 8. **Lambda** updates the modern **GitHub PR Check-Runs API** (success/neutral/failure) and attaches the rich AI explanation payload to the Check Run output.
 9. A **Serverless UI Dashboard** (securely hosted on **AWS Amplify**) reads from the Decisions Table to visualize live metrics via Chart.js, chronologically sorted.
 
