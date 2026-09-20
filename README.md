@@ -44,6 +44,51 @@ Coming into this build from a mostly FastAPI/PostgreSQL/Docker background, most 
 
 ## Architecture
 
+```mermaid
+flowchart TD
+    %% Define styles
+    classDef aws fill:#FF9900,stroke:#232F3E,stroke-width:2px,color:black
+    classDef github fill:#24292e,stroke:#ffffff,stroke-width:2px,color:white
+    classDef frontend fill:#61DAFB,stroke:#20232a,stroke-width:2px,color:black
+
+    %% GitHub
+    User((Developer)):::github
+    GH[GitHub Repo Webhook]:::github
+    User -- "Opens/Reviews PR" --> GH
+
+    %% AWS API & Compute
+    AGW[Amazon API Gateway]:::aws
+    GH -- "POST /webhook" --> AGW
+    
+    Lambda[AWS Lambda Function]:::aws
+    AGW -- "Triggers" --> Lambda
+    
+    %% AWS Services
+    SM[(AWS Secrets Manager)]:::aws
+    Lambda -- "Validates HMAC" --> SM
+    
+    DBCore[(DynamoDB Members)]:::aws
+    Lambda -- "Fetch Team Membership" --> DBCore
+    
+    AVP{AWS Verified Permissions}:::aws
+    Lambda -- "Evaluate Cedar Policies" --> AVP
+    
+    Bedrock[Amazon Bedrock AI]:::aws
+    Lambda -- "Generate Explanation" --> Bedrock
+    
+    DBLog[(DynamoDB Decisions)]:::aws
+    Lambda -- "Log Decision" --> DBLog
+    
+    %% Feedback Loop
+    Lambda -- "POST Commit Status\n& PR Comment" --> GH
+    
+    %% Dashboard
+    Amplify[AWS Amplify Hosted UI]:::frontend
+    DashAPI[Dashboard API Lambda]:::aws
+    Amplify -- "Fetch Metrics" --> DashAPI
+    DashAPI -- "Query Logs" --> DBLog
+```
+
 1. **GitHub** sends a webhook event (PR or Review) to an **API Gateway**.
 2. **AWS Lambda** validates the HMAC signature, then fetches paginated PR metadata (files changed, line counts) via the GitHub REST API.
 3. **Lambda** looks up the actor's team memberships in **DynamoDB**.
