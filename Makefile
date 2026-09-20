@@ -13,4 +13,4 @@ test:
 	PYTHONPATH=. pytest tests/ -v
 
 load-policies:
-	python3 upload_avp.py
+	python3 scripts/upload_avp.py
