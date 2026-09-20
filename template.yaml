@@ -61,6 +61,7 @@ Resources:
             - Effect: Allow
               Action: 
                 - verifiedpermissions:IsAuthorized
+                - verifiedpermissions:BatchIsAuthorized
                 - verifiedpermissions:GetPolicy
               Resource: 
                 - !GetAtt GatekeeperPolicyStore.Arn
