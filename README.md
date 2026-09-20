@@ -54,18 +54,29 @@ flowchart TD
     %% GitHub
     User((Developer)):::github
     GH[GitHub Repo Webhook]:::github
-    User -- "Opens/Reviews PR" --> GH
+    GH_REST[GitHub REST API]:::github
+    GH_BP{GitHub Branch Protection}:::github
+    
+    User -- "Submits PR Review" --> GH
 
-    %% AWS API & Compute
+    %% Admin Path
+    Admin((Security Admin)):::aws
+    Admin -- "Manages Policies" --> AVP
+    Admin -- "Manages Teams" --> DBCore
+
+    %% AWS API Gateway
     AGW[Amazon API Gateway]:::aws
     GH -- "POST /webhook" --> AGW
     
-    Lambda[AWS Lambda Function]:::aws
+    %% Webhook Lambda & Subcomponents
+    Lambda[Webhook Lambda]:::aws
     AGW -- "Triggers" --> Lambda
     
-    %% AWS Services
     SM[(AWS Secrets Manager)]:::aws
-    Lambda <-->|"Validates HMAC"| SM
+    Lambda -->|"Fetches Secret"| SM
+    SM -->|"Returns Secret (for HMAC)"| Lambda
+    
+    Lambda <-->|"Fetches PR Facts\n(Files & Line Count)"| GH_REST
     
     DBCore[(DynamoDB Members)]:::aws
     Lambda <-->|"Fetch Team Membership"| DBCore
@@ -77,15 +88,17 @@ flowchart TD
     Lambda <-->|"Generate Explanation"| Bedrock
     
     DBLog[(DynamoDB Decisions)]:::aws
-    Lambda -->|"Log Decision"| DBLog
+    Lambda <-->|"Idempotency Lock\n& Log Final Decision"| DBLog
     
     %% Feedback Loop
-    Lambda -->|"POST Commit Status\n& PR Comment"| GH
+    Lambda -->|"POST Commit Status\n& PR Comment"| GH_BP
+    GH_BP -- "Blocks or Allows Merge" --> User
     
     %% Dashboard
     Amplify[AWS Amplify Hosted UI]:::frontend
     DashAPI[Dashboard API Lambda]:::aws
-    Amplify <-->|"Fetch Metrics"| DashAPI
+    Amplify -- "GET /decisions" --> AGW
+    AGW -- "Triggers" --> DashAPI
     DashAPI <-->|"Query Logs"| DBLog
 ```
 
