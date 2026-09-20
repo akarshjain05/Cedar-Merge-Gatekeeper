@@ -106,6 +106,13 @@ def handler(event, context):
         pr_number = pr["number"]
         sender = body.get("sender", {}).get("login", "")
         author = pr["user"]["login"]
+        
+        # CRITICAL SECURITY FIX: Sender validation
+        # Prevent empty string injection which could bypass self-approval checks
+        # or evaluate against an anonymous principal.
+        if not sender or not author:
+            return {"statusCode": 200, "body": "Ignored payload with missing sender or author"}
+            
         lines_changed = pr.get("additions", 0) + pr.get("deletions", 0)
         head_sha = pr["head"]["sha"]
     except KeyError:

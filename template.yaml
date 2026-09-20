@@ -78,6 +78,7 @@ Resources:
       Environment:
         Variables:
           DECISIONS_TABLE_NAME: !Ref DecisionsTable
+          FRONTEND_URL: "https://main.d3ofi8gfbpsdj6.amplifyapp.com"
       Events:
         GetDecisions:
           Type: Api
