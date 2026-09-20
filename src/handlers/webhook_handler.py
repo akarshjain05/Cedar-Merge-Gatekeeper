@@ -19,13 +19,21 @@ import uuid
 from datetime import datetime, timezone
 import boto3
 
-def _log_decision_to_db(decision_log: dict, delivery_id: str):
-    try:
+_dynamodb_table = None
+
+def _get_table():
+    global _dynamodb_table
+    if _dynamodb_table is None:
         table_name = os.environ.get("DECISIONS_TABLE_NAME")
         if table_name:
             dynamodb = boto3.resource("dynamodb")
-            table = dynamodb.Table(table_name)
-            
+            _dynamodb_table = dynamodb.Table(table_name)
+    return _dynamodb_table
+
+def _log_decision_to_db(decision_log: dict, delivery_id: str):
+    try:
+        table = _get_table()
+        if table:
             decision_log["id"] = delivery_id
             decision_log["timestamp"] = datetime.now(timezone.utc).isoformat()
             
@@ -55,10 +63,8 @@ def handler(event, context):
     headers = event.get("headers", {})
     delivery_id = next((v for k, v in headers.items() if k.lower() == "x-github-delivery"), str(uuid.uuid4()))
 
-    table_name = os.environ.get("DECISIONS_TABLE_NAME")
-    if table_name:
-        dynamodb = boto3.resource("dynamodb")
-        table = dynamodb.Table(table_name)
+    table = _get_table()
+    if table:
         try:
             table.put_item(
                 Item={"id": delivery_id, "timestamp": datetime.now(timezone.utc).isoformat(), "status": "PROCESSING"},
@@ -81,9 +87,15 @@ def handler(event, context):
     except json.JSONDecodeError:
         return {"statusCode": 200, "body": "Ignored malformed JSON"}
 
-    # Handle GitHub Ping Event
-    if "zen" in body:
+    # CRITICAL FIX: Explicit Webhook Event Type Validation
+    # Relying solely on body structure allows crafted payloads to bypass intent.
+    event_type = next((v for k, v in headers.items() if k.lower() == "x-github-event"), "")
+    
+    if event_type == "ping":
         return {"statusCode": 200, "body": "pong"}
+        
+    if event_type not in ["pull_request", "pull_request_review"]:
+        return {"statusCode": 200, "body": f"Ignored event type: {event_type}"}
 
     if "pull_request" not in body:
         return {"statusCode": 200, "body": "Ignored event"}

@@ -72,7 +72,7 @@ def test_allows_security_to_approve_auth(members_table, monkeypatch):
     payload["pull_request"]["user"]["login"] = "alice"
     payload["sender"]["login"] = "bob"
     
-    event = {"body": json.dumps(payload)}
+    event = {"body": json.dumps(payload), "headers": {"x-github-event": "pull_request_review"}}
     response = webhook_handler.handler(event, None)
 
     assert response["statusCode"] == 200
@@ -92,7 +92,7 @@ def test_denies_self_approval(members_table, monkeypatch):
     payload["pull_request"]["user"]["login"] = "alice"
     payload["sender"]["login"] = "alice"
     
-    event = {"body": json.dumps(payload)}
+    event = {"body": json.dumps(payload), "headers": {"x-github-event": "pull_request_review"}}
     response = webhook_handler.handler(event, None)
 
     assert response["statusCode"] == 200
@@ -119,7 +119,7 @@ def test_github_api_failure_degrades_gracefully(members_table, monkeypatch):
     with open("tests/fixtures/real_pr_payload.json", "r") as f:
         payload = json.load(f)
         
-    event = {"body": json.dumps(payload)}
+    event = {"body": json.dumps(payload), "headers": {"x-github-event": "pull_request_review"}}
     response = webhook_handler.handler(event, None)
 
     assert response["statusCode"] == 200
@@ -140,7 +140,7 @@ def test_avp_failure_degrades_gracefully(members_table, monkeypatch):
     with open("tests/fixtures/real_pr_payload.json", "r") as f:
         payload = json.load(f)
         
-    event = {"body": json.dumps(payload)}
+    event = {"body": json.dumps(payload), "headers": {"x-github-event": "pull_request_review"}}
     response = webhook_handler.handler(event, None)
 
     assert response["statusCode"] == 200
@@ -162,7 +162,7 @@ def test_large_pr_allowed_for_senior_engineer(members_table, monkeypatch):
     # Vikash is in senior-engineers
     payload["sender"]["login"] = "vikash"
     
-    event = {"body": json.dumps(payload)}
+    event = {"body": json.dumps(payload), "headers": {"x-github-event": "pull_request_review"}}
     response = webhook_handler.handler(event, None)
 
     assert response["statusCode"] == 200
@@ -185,7 +185,7 @@ def test_large_pr_denied_for_standard_engineer(members_table, monkeypatch):
     # Alice is NOT in senior-engineers
     payload["sender"]["login"] = "alice"
     
-    event = {"body": json.dumps(payload)}
+    event = {"body": json.dumps(payload), "headers": {"x-github-event": "pull_request_review"}}
     response = webhook_handler.handler(event, None)
 
     assert response["statusCode"] == 200
@@ -211,7 +211,7 @@ def test_denies_non_security_to_approve_auth(members_table, monkeypatch):
     # Alice is NOT in security-team
     payload["sender"]["login"] = "alice"
     
-    event = {"body": json.dumps(payload)}
+    event = {"body": json.dumps(payload), "headers": {"x-github-event": "pull_request_review"}}
     response = webhook_handler.handler(event, None)
 
     assert response["statusCode"] == 200
@@ -230,7 +230,7 @@ def test_bedrock_fallback_uses_static_reason(members_table, monkeypatch):
     with open("tests/fixtures/real_pr_payload.json", "r") as f:
         payload = json.load(f)
     
-    event = {"body": json.dumps(payload)}
+    event = {"body": json.dumps(payload), "headers": {"x-github-event": "pull_request_review"}}
     response = webhook_handler.handler(event, None)
 
     assert response["statusCode"] == 200
@@ -247,7 +247,7 @@ def test_bedrock_ai_reason_used(members_table, monkeypatch):
     with open("tests/fixtures/real_pr_payload.json", "r") as f:
         payload = json.load(f)
     
-    event = {"body": json.dumps(payload)}
+    event = {"body": json.dumps(payload), "headers": {"x-github-event": "pull_request_review"}}
     response = webhook_handler.handler(event, None)
 
     assert response["statusCode"] == 200
@@ -284,7 +284,7 @@ def test_merge_action_path(members_table, monkeypatch):
     payload["pull_request"]["user"]["login"] = "alice"
     payload["sender"]["login"] = "test-user"
     
-    event = {"body": json.dumps(payload)}
+    event = {"body": json.dumps(payload), "headers": {"x-github-event": "pull_request_review"}}
     response = webhook_handler.handler(event, None)
 
     assert response["statusCode"] == 200
@@ -319,7 +319,7 @@ def test_denies_pr_when_a_non_first_non_auth_file_is_denied(members_table, monke
     with open("tests/fixtures/real_pr_payload.json", "r") as f:
         payload = json.load(f)
         
-    event = {"body": json.dumps(payload)}
+    event = {"body": json.dumps(payload), "headers": {"x-github-event": "pull_request_review"}}
     response = webhook_handler.handler(event, None)
     
     body = json.loads(response["body"])
