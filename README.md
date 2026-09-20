@@ -80,8 +80,11 @@ This means a malicious insider with standard `write` access to the repository co
 **The Production Fix (Future Work)**
 In a production rollout, this architecture must be migrated to a dedicated **GitHub App** utilizing the modern **Check Runs API** (`/check-runs`). Unlike legacy commit statuses, Check Runs are strictly bound to the specific GitHub App ID that created them. If a junior engineer attempts to forge a Check Run via the API, GitHub will instantly reject it because they do not possess the cryptographic private key belonging to the Gatekeeper GitHub App, rendering the architecture 100% tamper-proof at the GitHub boundary.
 
+**Timezone Misalignment (UTC)**
+Currently, the `dayOfWeek` calculation inside the AWS Lambda environment relies strictly on UTC time. This means that a developer in Asia Pacific may be prematurely blocked by the "No Friday Merges" rule if their Thursday evening overlaps with Friday UTC. In a production rollout, we would use the GitHub API to fetch the actor's profile timezone (or lookup team offsets in DynamoDB) to calculate a localized `dayOfWeek` offset.
 
-
+**API Gateway Rate Limiting**
+The webhook endpoint currently lacks strict throttling. While unauthorized requests are safely discarded via HMAC signature verification, a DDoS attack could still incur Lambda invocation and Secrets Manager costs. A production deployment would attach an **AWS WAF** (Web Application Firewall) to the API Gateway to block malicious IPs and configure a strict API Gateway Usage Plan with throttling constraints (e.g., 50 requests/second).
 ## How to use this on your own GitHub Repository
 Once you have deployed the AWS SAM stack, you can attach this gatekeeper to any GitHub repository:
 
