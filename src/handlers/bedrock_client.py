@@ -9,7 +9,8 @@ _client = None
 def _get_client():
     global _client
     if _client is None:
-        _client = boto3.client("bedrock-runtime", region_name="us-east-1")
+        # Dynamically inherit the region from the AWS Lambda execution environment
+        _client = boto3.client("bedrock-runtime", region_name=os.environ.get("AWS_REGION", "us-east-1"))
     return _client
 
 def generate_explanation(principal: str, policy_id: str, changed_path: str, lines_changed: int, decision: str) -> str:

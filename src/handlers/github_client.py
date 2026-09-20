@@ -162,14 +162,17 @@ def get_pr_changed_files(repo_name: str, pr_number: int) -> list[str]:
         response.raise_for_status()
         
         for item in response.json():
-            files.append(item.get("filename"))
+            filename = item.get("filename")
+            if filename:
+                files.append(filename)
             
             # CRITICAL SECURITY FIX: File Rename Evasion
             # If a file was renamed or moved out of a secure directory (like /src/auth/),
             # we MUST evaluate the original path as well. Otherwise, an attacker could
             # move a secure file to a public directory and bypass Cedar path restrictions.
-            if "previous_filename" in item:
-                files.append(item.get("previous_filename"))
+            prev_filename = item.get("previous_filename")
+            if prev_filename:
+                files.append(prev_filename)
         # Handle GitHub API pagination
         url = None
         if "Link" in response.headers:
