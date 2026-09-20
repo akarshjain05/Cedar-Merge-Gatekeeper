@@ -87,17 +87,30 @@ def batch_is_authorized(policy_store_id: str, requests: list) -> list:
             requests=avp_requests
         )
         
-        for res in response.get("results", []):
+        # CRITICAL SECURITY FIX: Batch Result Order Assumption
+        # Do not assume AWS returns results in the exact same order.
+        # We explicitly map the result back to the original request using correlation.
+        for original_req in avp_requests:
+            # Find the corresponding result by matching the request payload
+            res = next(
+                (r for r in response.get("results", []) if r.get("request") == original_req),
+                None
+            )
+            
+            if not res:
+                # If AWS dropped a request, fail securely
+                results.append({"allowed": False, "policy_ids": ["default-deny"], "errors": ["Missing result from AWS"]})
+                continue
+                
             policy_ids = []
             for d in res.get("determiningPolicies", []):
                 raw_id = d["policyId"]
                 policy_ids.append(get_policy_description(policy_store_id, raw_id))
                 
-            request_result = {
+            results.append({
                 "allowed": res["decision"] == "ALLOW",
                 "policy_ids": policy_ids,
                 "errors": res.get("errors", [])
-            }
-            results.append(request_result)
+            })
             
     return results

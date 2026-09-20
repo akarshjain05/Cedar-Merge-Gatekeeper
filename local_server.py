@@ -8,7 +8,7 @@ from unittest.mock import patch
 from src.handlers import team_repository
 def fake_get_teams_for_user(username):
     # Hardcoded test data matching the DynamoDB seed script
-    if username == "akarshjain05": return ["security-team"]
+    if username == "akarshjain05": return ["security-team", "engineering-core"]
     if username == "vikash": return ["senior-engineers"]
     if username == "test-user": return ["engineering-core"]
     return ["engineering-core"]
@@ -61,7 +61,7 @@ def fake_is_authorized(policy_store_id, principal_id, action_id, resource_id, co
         return {"allowed": True, "policy_ids": ["security-owns-auth"], "errors": []}
 
     # Rule 3 (permit): Engineers can approve non-auth PRs
-    if not is_auth_path and "engineering-core" in active_teams:
+    if not is_auth_path and ("engineering-core" in active_teams or "senior-engineers" in active_teams):
         return {"allowed": True, "policy_ids": ["engineering-default"], "errors": []}
 
     # Implicit deny — no policy matched
@@ -113,4 +113,4 @@ if __name__ == "__main__":
     print("🚀 Starting Cedar Merge Gatekeeper (Local Bypass Mode)")
     print("Listening on http://localhost:5001/webhook")
     print("Point ngrok to port 5001 to accept GitHub Webhooks!")
-    app.run(port=5002, debug=True)
+    app.run(port=5001, debug=True)
