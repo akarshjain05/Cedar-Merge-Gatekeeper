@@ -54,8 +54,7 @@ def verify_signature(event):
     return hmac.compare_digest(expected_signature, signature_header)
 
 def handler(event, context):
-    logger.info(f"RAW_WEBHOOK_PAYLOAD: {json.dumps(event)}")
-    
+    # Intentionally NOT logging the raw event to prevent leaking X-Hub-Signature-256 into CloudWatch
     # Phase 6: Verify Signature before processing
     if not verify_signature(event):
         return {"statusCode": 401, "body": "Unauthorized"}

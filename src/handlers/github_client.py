@@ -56,7 +56,7 @@ def set_commit_status(repo_name: str, head_sha: str, allowed: bool, reason: str)
             "description": reason,
             "context": "Cedar Merge Gatekeeper"
         },
-        timeout=5,
+        timeout=(3, 10),
     ).raise_for_status()
 
 def set_commit_status_neutral(repo_name: str, head_sha: str, reason: str) -> None:
@@ -78,7 +78,7 @@ def set_commit_status_neutral(repo_name: str, head_sha: str, reason: str) -> Non
             "description": reason,
             "context": "Cedar Merge Gatekeeper"
         },
-        timeout=5,
+        timeout=(3, 10),
     ).raise_for_status()
 
 
@@ -93,7 +93,7 @@ def post_pr_comment(repo_name: str, pr_number: int, reason: str) -> None:
             "Accept": "application/vnd.github.v3+json"
         },
         json={"body": reason},
-        timeout=5,
+        timeout=(3, 10),
     ).raise_for_status()
 
 def get_pr_line_count(repo_name: str, pr_number: int) -> int:
@@ -106,7 +106,7 @@ def get_pr_line_count(repo_name: str, pr_number: int) -> int:
             "Authorization": f"Bearer {_get_token()}",
             "Accept": "application/vnd.github.v3+json"
         },
-        timeout=5
+        timeout=(3, 10)
     )
     response.raise_for_status()
     data = response.json()
@@ -124,7 +124,7 @@ def get_pr_approvers(repo_name: str, pr_number: int) -> list[str]:
     }
     
     while url:
-        response = requests.get(url, headers=headers, timeout=5)
+        response = requests.get(url, headers=headers, timeout=(3, 10))
         response.raise_for_status()
         
         for review in response.json():
@@ -164,7 +164,7 @@ def get_pr_changed_files(repo_name: str, pr_number: int) -> list[str]:
     }
     
     while url:
-        response = requests.get(url, headers=headers, timeout=5)
+        response = requests.get(url, headers=headers, timeout=(3, 10))
         response.raise_for_status()
         
         for item in response.json():

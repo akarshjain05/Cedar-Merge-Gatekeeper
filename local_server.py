@@ -28,15 +28,16 @@ def fake_is_authorized(policy_store_id, principal_id, action_id, resource_id, co
     day_of_week    = context.get("dayOfWeek", {}).get("string", "")
     is_hotfix      = context.get("isHotfix", {}).get("boolean", False)
 
-    is_auth_path   = "/auth/" in changed_path or changed_path.startswith("auth/")
+    # Match Cedar 'like "/src/auth/*"'
+    is_auth_path   = changed_path.startswith("/src/auth/")
     is_large_pr    = total_lines > 500
 
     # Rule 5 (forbid): No Friday Merges unless it's a hotfix by a senior engineer
     if day_of_week == "Friday" and not (is_hotfix and "senior-engineers" in active_teams):
         return {"allowed": False, "policy_ids": ["no-friday-merges"], "errors": []}
 
-    # Rule 6 (forbid): No infrastructure changes on weekends unless it's a hotfix by a senior
-    is_infra_path = "/terraform/" in changed_path or changed_path.startswith("terraform/")
+    # Match Cedar 'like "/terraform/*"'
+    is_infra_path = changed_path.startswith("/terraform/")
     if is_infra_path and day_of_week in ["Saturday", "Sunday"] and not (is_hotfix and "senior-engineers" in active_teams):
         return {"allowed": False, "policy_ids": ["no-weekend-infra"], "errors": []}
 

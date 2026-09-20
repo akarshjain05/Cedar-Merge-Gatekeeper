@@ -287,7 +287,7 @@ def test_merge_action_path(members_table, monkeypatch):
     payload["pull_request"]["user"]["login"] = "alice"
     payload["sender"]["login"] = "test-user"
     
-    event = {"body": json.dumps(payload), "headers": {"x-github-event": "pull_request_review"}}
+    event = {"body": json.dumps(payload), "headers": {"x-github-event": "pull_request"}}
     response = webhook_handler.handler(event, None)
 
     assert response["statusCode"] == 200

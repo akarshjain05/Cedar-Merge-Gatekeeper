@@ -4,15 +4,16 @@ import os
 # Ensure the src directory is in the path
 sys.path.append(os.path.abspath("src"))
 
-from handlers.bedrock_client import generate_rejection_explanation
+from handlers.bedrock_client import generate_explanation
 
 print("🤖 Requesting AI explanation from Bedrock (Claude 3 Haiku)...\n")
 
-ai_response = generate_rejection_explanation(
+ai_response = generate_explanation(
     principal="junior-dev",
     policy_id="security-owns-auth",
     changed_path="/src/auth/login.py",
-    lines_changed=30
+    lines_changed=30,
+    decision="DENY"
 )
 
 if ai_response:

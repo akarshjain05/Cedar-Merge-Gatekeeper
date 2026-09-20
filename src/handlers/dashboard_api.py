@@ -33,20 +33,25 @@ def handler(event, context):
         response = table.scan()
         items.extend(response.get("Items", []))
         
-        while "LastEvaluatedKey" in response:
+        pages = 1
+        while "LastEvaluatedKey" in response and pages < 5:
             response = table.scan(ExclusiveStartKey=response["LastEvaluatedKey"])
             items.extend(response.get("Items", []))
+            pages += 1
             
         items.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
         
         return {
             "statusCode": 200,
             "headers": _cors_headers(event),
-            "body": json.dumps({"decisions": items})
+            # Use default=str to safely serialize any DynamoDB Decimals
+            "body": json.dumps({"decisions": items}, default=str)
         }
     except Exception as e:
+        # Do not leak internal stack traces or AWS ARNs to the client
+        print(f"Internal Dashboard API Error: {e}")
         return {
             "statusCode": 500,
             "headers": _cors_headers(event),
-            "body": json.dumps({"error": str(e)})
+            "body": json.dumps({"error": "Internal Server Error"})
         }
