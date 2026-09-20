@@ -249,9 +249,10 @@ def handler(event, context):
         
     decision = "ALLOW" if result["allowed"] else "DENY"
     policy_id = result['policy_ids'][0] if result.get('policy_ids') else "default-deny"
+    policy_desc = result['policy_descriptions'][0] if result.get('policy_descriptions') else policy_id
     ai_reason = bedrock_client.generate_explanation(
         principal=sender,
-        policy_id=policy_id,
+        policy_id=policy_desc,
         changed_path=changed_path,
         lines_changed=lines_changed,
         decision=decision

@@ -92,13 +92,16 @@ def batch_is_authorized(policy_store_id: str, requests: list) -> list:
         # The 'request' object is NOT embedded in the result.
         for res in response.get("results", []):
             policy_ids = []
+            policy_descriptions = []
             for d in res.get("determiningPolicies", []):
                 raw_id = d["policyId"]
-                policy_ids.append(get_policy_description(policy_store_id, raw_id))
+                policy_ids.append(raw_id)
+                policy_descriptions.append(get_policy_description(policy_store_id, raw_id))
                 
             results.append({
                 "allowed": res["decision"] == "ALLOW",
                 "policy_ids": policy_ids,
+                "policy_descriptions": policy_descriptions,
                 "errors": res.get("errors", [])
             })
     return results

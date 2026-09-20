@@ -46,7 +46,12 @@ def _stub_avp(monkeypatch, allowed: bool, policy_id: str | None = None):
     monkeypatch.setattr(
         webhook_handler.avp_client, "batch_is_authorized",
         lambda policy_store_id, requests: [
-            {"allowed": allowed, "policy_ids": [policy_id] if policy_id else [], "errors": []}
+            {
+                "allowed": allowed, 
+                "policy_ids": [policy_id] if policy_id else [], 
+                "policy_descriptions": [policy_id] if policy_id else [], 
+                "errors": []
+            }
             for _ in requests
         ]
     )
