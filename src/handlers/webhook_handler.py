@@ -62,7 +62,12 @@ def handler(event, context):
         try:
             table.put_item(
                 Item={"id": delivery_id, "timestamp": datetime.now(timezone.utc).isoformat(), "status": "PROCESSING"},
-                ConditionExpression="attribute_not_exists(id)"
+                # CRITICAL SECURITY FIX: Use 'verdict' instead of 'id' for the lock condition.
+                # If we use 'attribute_not_exists(id)', a Lambda crash will leave the DB with
+                # a permanent PROCESSING lock, blocking all future GitHub retries.
+                # Since the final decision log writes a 'verdict' attribute, checking for 'verdict'
+                # allows GitHub retries to safely overwrite a stuck/crashed PROCESSING lock.
+                ConditionExpression="attribute_not_exists(verdict)"
             )
         except Exception as e:
             if "ConditionalCheckFailedException" in str(e.__class__.__name__):
