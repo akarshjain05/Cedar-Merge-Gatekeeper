@@ -248,8 +248,13 @@ def handler(event, context):
         logger.warning(f"AVP Evaluation Errors: {result['errors']}")
         
     decision = "ALLOW" if result["allowed"] else "DENY"
-    policy_id = result['policy_ids'][0] if result.get('policy_ids') else "default-deny"
-    policy_desc = result['policy_descriptions'][0] if result.get('policy_descriptions') else policy_id
+    policy_id_raw = result['policy_ids'][0] if result.get('policy_ids') else "default-deny"
+    policy_desc = result['policy_descriptions'][0] if result.get('policy_descriptions') else policy_id_raw
+    
+    # Extract the first line of the description for a clean, readable dashboard title (e.g. "Rule 7: Senior Break-Glass")
+    # This prevents pie chart overflow while keeping the data table human-readable.
+    dashboard_policy_title = policy_desc.split('\n')[0] if '\n' in policy_desc else policy_desc
+    
     ai_reason = bedrock_client.generate_explanation(
         principal=sender,
         policy_id=policy_desc,
@@ -262,19 +267,19 @@ def handler(event, context):
         if ai_reason:
             reason = f"✅ **Merge check passed**\n\n**Gatekeeper AI:** {ai_reason}"
         else:
-            reason = f"✅ **Merge check passed** — `{policy_id}` permitted this approval.\n`{sender}` is authorized to approve this PR."
+            reason = f"✅ **Merge check passed** — `{dashboard_policy_title}` permitted this approval.\n`{sender}` is authorized to approve this PR."
     else:
         if ai_reason:
             reason = f"🚫 **Merge check failed**\n\n**Gatekeeper AI:** {ai_reason}"
         else:
-            reason = f"🚫 **Merge check failed** — policy `{policy_id}` denied this request.\nAsk another reviewer to approve or check team permissions."
+            reason = f"🚫 **Merge check failed** — policy `{dashboard_policy_title}` denied this request.\nAsk another reviewer to approve or check team permissions."
         
     decision_log = {
         "principal": sender,
         "action": action_id,
         "resource": resource_id,
         "verdict": decision,
-        "policyId": policy_id,
+        "policyId": dashboard_policy_title,
         "reason": reason
     }
     
