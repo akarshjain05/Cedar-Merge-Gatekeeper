@@ -45,61 +45,71 @@ Coming into this build from a mostly FastAPI/PostgreSQL/Docker background, most 
 ## Architecture
 
 ```mermaid
-flowchart TD
+flowchart LR
     %% Define styles
     classDef aws fill:#FF9900,stroke:#232F3E,stroke-width:2px,color:black
     classDef github fill:#24292e,stroke:#ffffff,stroke-width:2px,color:white
     classDef frontend fill:#61DAFB,stroke:#20232a,stroke-width:2px,color:black
+    classDef admin fill:#8e44ad,stroke:#ffffff,stroke-width:2px,color:white
 
-    %% GitHub
-    User((Developer)):::github
-    GH[GitHub Repo Webhook]:::github
-    GH_REST[GitHub REST API]:::github
-    GH_BP{GitHub Branch Protection}:::github
-    
-    User -- "Submits PR Review" --> GH
+    %% Actors
+    Dev((Developer)):::github
+    Admin((Security Admin)):::admin
 
-    %% Admin Path
-    Admin((Security Admin)):::aws
-    Admin -- "Manages Policies" --> AVP
-    Admin -- "Manages Teams" --> DBCore
+    %% Subgraphs to organize layout
+    subgraph GitHub [GitHub Ecosystem]
+        direction TB
+        Webhook[Repo Webhook]:::github
+        REST[REST API]:::github
+        BP{Branch Protection}:::github
+    end
 
-    %% AWS API Gateway
-    AGW[Amazon API Gateway]:::aws
-    GH -- "POST /webhook" --> AGW
+    subgraph Frontend [Frontend UI]
+        Amplify[Amplify Dashboard]:::frontend
+    end
+
+    subgraph AWSEdge [AWS Edge]
+        AGW[API Gateway]:::aws
+    end
+
+    subgraph Compute [Compute Layer]
+        WL[Webhook Lambda]:::aws
+        DL[Dashboard Lambda]:::aws
+    end
+
+    subgraph Backend [Core Backend Services]
+        direction TB
+        SM[(Secrets Manager)]:::aws
+        MemDB[(DynamoDB Members)]:::aws
+        AVP{Verified Permissions}:::aws
+        Bedrock[Bedrock AI]:::aws
+        DecDB[(DynamoDB Decisions)]:::aws
+    end
+
+    %% Primary Request Flow (Solid Lines)
+    Dev -- "1. Submits Review" --> Webhook
+    Webhook -- "2. POST /webhook" --> AGW
+    AGW --> WL
     
-    %% Webhook Lambda & Subcomponents
-    Lambda[Webhook Lambda]:::aws
-    AGW -- "Triggers" --> Lambda
+    WL -- "8. POST Status & Comment" --> BP
+    BP -- "9. Enforce Decision" --> Dev
     
-    SM[(AWS Secrets Manager)]:::aws
-    Lambda -->|"Fetches Secret"| SM
-    SM -->|"Returns Secret (for HMAC)"| Lambda
-    
-    Lambda <-->|"Fetches PR Facts\n(Files & Line Count)"| GH_REST
-    
-    DBCore[(DynamoDB Members)]:::aws
-    Lambda <-->|"Fetch Team Membership"| DBCore
-    
-    AVP{AWS Verified Permissions}:::aws
-    Lambda <-->|"Evaluate Cedar Policies"| AVP
-    
-    Bedrock[Amazon Bedrock AI]:::aws
-    Lambda <-->|"Generate Explanation"| Bedrock
-    
-    DBLog[(DynamoDB Decisions)]:::aws
-    Lambda <-->|"Idempotency Lock\n& Log Final Decision"| DBLog
-    
-    %% Feedback Loop
-    Lambda -->|"POST Commit Status\n& PR Comment"| GH_BP
-    GH_BP -- "Blocks or Allows Merge" --> User
-    
-    %% Dashboard
-    Amplify[AWS Amplify Hosted UI]:::frontend
-    DashAPI[Dashboard API Lambda]:::aws
     Amplify -- "GET /decisions" --> AGW
-    AGW -- "Triggers" --> DashAPI
-    DashAPI <-->|"Query Logs"| DBLog
+    AGW --> DL
+
+    %% Secondary Backend Fetching (Dotted Lines)
+    WL -. "3. Fetch Secrets" .-> SM
+    WL -. "4. Fetch PR Facts" .-> REST
+    WL -. "5. Fetch Teams" .-> MemDB
+    WL -. "6. Evaluate AuthZ" .-> AVP
+    WL -. "7. Generate AI Reason" .-> Bedrock
+    WL -. "Idempotency Lock & Log" .-> DecDB
+    
+    DL -. "Query Logs" .-> DecDB
+
+    %% Admin Flow
+    Admin -. "Manage Policies" .-> AVP
+    Admin -. "Manage Teams" .-> MemDB
 ```
 
 1. **GitHub** sends a webhook event (PR or Review) to an **API Gateway**.
