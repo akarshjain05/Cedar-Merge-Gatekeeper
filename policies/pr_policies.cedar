@@ -48,3 +48,27 @@ when {
   context.dayOfWeek == "Friday" && 
   !(context.isHotfix && context.activeTeams.contains("senior-engineers"))
 };
+
+// Rule 6: No infrastructure changes on weekends unless it's a hotfix by a senior engineer
+forbid (
+  principal,
+  action in [CedarGatekeeper::Action::"approvePR", CedarGatekeeper::Action::"mergePR"],
+  resource
+)
+when {
+  context.changedPath like "/terraform/*" &&
+  (context.dayOfWeek == "Saturday" || context.dayOfWeek == "Sunday") &&
+  !(context.isHotfix && context.activeTeams.contains("senior-engineers"))
+};
+
+// Rule 7: Senior Break-Glass Override
+// Senior engineers can bypass path restrictions (like /src/auth/*) during an emergency hotfix.
+permit (
+  principal,
+  action in [CedarGatekeeper::Action::"approvePR", CedarGatekeeper::Action::"mergePR"],
+  resource
+)
+when {
+  context.activeTeams.contains("senior-engineers") &&
+  context.isHotfix == true
+};

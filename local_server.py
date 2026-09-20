@@ -35,6 +35,11 @@ def fake_is_authorized(policy_store_id, principal_id, action_id, resource_id, co
     if day_of_week == "Friday" and not (is_hotfix and "senior-engineers" in active_teams):
         return {"allowed": False, "policy_ids": ["no-friday-merges"], "errors": []}
 
+    # Rule 6 (forbid): No infrastructure changes on weekends unless it's a hotfix by a senior
+    is_infra_path = "/terraform/" in changed_path or changed_path.startswith("terraform/")
+    if is_infra_path and day_of_week in ["Saturday", "Sunday"] and not (is_hotfix and "senior-engineers" in active_teams):
+        return {"allowed": False, "policy_ids": ["no-weekend-infra"], "errors": []}
+
     # Rule 2 (forbid): No self-approvals
     if principal_id == pr_author_eid:
         return {"allowed": False, "policy_ids": ["no-self-approval"], "errors": []}
@@ -42,6 +47,10 @@ def fake_is_authorized(policy_store_id, principal_id, action_id, resource_id, co
     # Rule 4 (forbid): Large PRs require senior engineers
     if is_large_pr and "senior-engineers" not in active_teams:
         return {"allowed": False, "policy_ids": ["large-pr-requires-senior"], "errors": []}
+
+    # Rule 7 (permit): Senior Break-Glass (Hotfix)
+    if is_hotfix and "senior-engineers" in active_teams:
+        return {"allowed": True, "policy_ids": ["senior-break-glass"], "errors": []}
 
     # Rule 1 (permit): Security team owns /auth/ path
     if is_auth_path and "security-team" in active_teams:
