@@ -21,8 +21,8 @@ def get_policy_description(policy_store_id: str, policy_id: str) -> str:
         client = _get_client()
         try:
             resp = client.get_policy(policyStoreId=policy_store_id, policyId=policy_id)
-            desc = resp.get("policyDefinition", {}).get("static", {}).get("description")
-            statement = resp.get("policyDefinition", {}).get("static", {}).get("statement")
+            desc = resp.get("definition", {}).get("static", {}).get("description")
+            statement = resp.get("definition", {}).get("static", {}).get("statement")
             
             if desc:
                 _policy_descriptions[policy_id] = desc
