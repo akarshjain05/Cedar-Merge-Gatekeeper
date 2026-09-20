@@ -8,23 +8,26 @@ import boto3
 import pytest
 from moto import mock_aws
 
-os.environ.setdefault("MEMBERS_TABLE_NAME", "members-test")
-os.environ.setdefault("POLICY_STORE_ID", "test-store")
-os.environ.setdefault("GITHUB_API_BASE_URL", "https://api.github.com")
-os.environ.setdefault("GITHUB_TOKEN_SECRET_ARN", "arn:aws:secretsmanager:us-east-1:000000000000:secret:test")
-os.environ.setdefault("GITHUB_WEBHOOK_SECRET_ARN", "arn:aws:secretsmanager:us-east-1:000000000000:secret:webhook")
-os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
-os.environ.setdefault("AWS_ACCESS_KEY_ID", "testing")
-os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "testing")
-os.environ.setdefault("AWS_SECURITY_TOKEN", "testing")
-os.environ.setdefault("AWS_SESSION_TOKEN", "testing")
+os.environ["MEMBERS_TABLE_NAME"] = "members-test"
+os.environ["POLICY_STORE_ID"] = "test-store"
+os.environ["GITHUB_API_BASE_URL"] = "https://api.github.com"
+os.environ["GITHUB_TOKEN_SECRET_ARN"] = "arn:aws:secretsmanager:us-east-1:000000000000:secret:test"
+os.environ["GITHUB_WEBHOOK_SECRET_ARN"] = "arn:aws:secretsmanager:us-east-1:000000000000:secret:webhook"
+os.environ["AWS_DEFAULT_REGION"] = "us-east-1"
+os.environ["AWS_ACCESS_KEY_ID"] = "testing"
+os.environ["AWS_SECRET_ACCESS_KEY"] = "testing"
+os.environ["AWS_SECURITY_TOKEN"] = "testing"
+os.environ["AWS_SESSION_TOKEN"] = "testing"
 
 
 from src.handlers import webhook_handler
 
-
 @pytest.fixture
 def members_table():
+    # Reset singletons to prevent state leakage between tests
+    webhook_handler.team_repository._table = None
+    webhook_handler._dynamodb_table = None
+    
     with mock_aws():
         dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
         table = dynamodb.create_table(
@@ -328,3 +331,35 @@ def test_denies_pr_when_a_non_first_non_auth_file_is_denied(members_table, monke
     # Assert both files were actually sent to Cedar
     assert "/README.md" in requested_files
     assert "/src/payments/charge.py" in requested_files
+
+def test_empty_file_list_evaluates_as_unknown(members_table, monkeypatch):
+    """Verifies that if GitHub returns 0 files, we evaluate ['/unknown'] and it is correctly processed."""
+    monkeypatch.setattr(webhook_handler, "verify_signature", lambda e: True)
+    monkeypatch.setattr(webhook_handler.github_client, "get_pr_changed_files", lambda repo, pr: [])
+    monkeypatch.setattr(webhook_handler.github_client, "get_pr_line_count", lambda repo, pr: 0)
+    monkeypatch.setattr(webhook_handler.github_client, "get_pr_approvers", lambda repo, pr: ["test-user"])
+    monkeypatch.setattr(webhook_handler.github_client, "set_commit_status", lambda *a, **k: None)
+    monkeypatch.setattr(webhook_handler.github_client, "post_pr_comment", lambda *a, **k: None)
+
+    requested_files = []
+
+    def mock_batch_is_authorized(policy_store_id, requests):
+        results = []
+        for req in requests:
+            file_path = req["context"]["changedPath"]["string"]
+            requested_files.append(file_path)
+            results.append({"allowed": True, "policy_ids": ["engineering-default"], "errors": []})
+        return results
+
+    monkeypatch.setattr(webhook_handler.avp_client, "batch_is_authorized", mock_batch_is_authorized)
+
+    with open("tests/fixtures/real_pr_payload.json", "r") as f:
+        payload = json.load(f)
+    
+    # Needs a custom headers mock for validation
+    event = {"body": json.dumps(payload), "headers": {"x-github-event": "pull_request_review"}}
+    response = webhook_handler.handler(event, None)
+
+    assert response["statusCode"] == 200
+    # It should have passed exactly one file string "/unknown" to Cedar for each user
+    assert requested_files == ["/unknown", "/unknown"]

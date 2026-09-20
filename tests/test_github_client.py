@@ -77,3 +77,25 @@ def test_get_pr_approvers_stale_and_dismissed(monkeypatch):
     assert "alice" not in approvers
     assert "bob" not in approvers
     assert len(approvers) == 2
+
+def test_get_pr_approvers_pagination(monkeypatch):
+    monkeypatch.setattr(github_client, "_get_token", lambda: "dummy-token")
+    
+    def mock_get(url, *args, **kwargs):
+        mock_resp = Mock()
+        if "page=2" not in url:
+            # Page 1
+            mock_resp.json.return_value = [{"user": {"login": "alice"}, "state": "APPROVED"}]
+            mock_resp.headers = {"Link": '<https://api.github.com/repos/org/repo/pulls/1/reviews?page=2>; rel="next"'}
+            mock_resp.raise_for_status = Mock()
+        else:
+            # Page 2
+            mock_resp.json.return_value = [{"user": {"login": "bob"}, "state": "APPROVED"}]
+            mock_resp.headers = {}
+            mock_resp.raise_for_status = Mock()
+        return mock_resp
+
+    monkeypatch.setattr(github_client.requests, "get", mock_get)
+
+    approvers = github_client.get_pr_approvers("org/repo", 1)
+    assert approvers == ["alice", "bob"]
