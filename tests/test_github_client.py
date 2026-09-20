@@ -44,3 +44,36 @@ def test_get_pr_changed_files_rename(monkeypatch):
     assert "src/utils/login.py" in files
     assert "src/auth/login.py" in files
     assert len(files) == 2
+
+def test_get_pr_approvers_stale_and_dismissed(monkeypatch):
+    monkeypatch.setattr(github_client, "_get_token", lambda: "dummy-token")
+    
+    def mock_get(url, *args, **kwargs):
+        mock_resp = Mock()
+        # Alice approves, but then requests changes
+        # Bob approves, but it is dismissed
+        # Charlie approves, and then comments
+        # Dave requests changes, then approves
+        mock_resp.json.return_value = [
+            {"user": {"login": "alice"}, "state": "APPROVED"},
+            {"user": {"login": "bob"}, "state": "APPROVED"},
+            {"user": {"login": "bob"}, "state": "DISMISSED"},
+            {"user": {"login": "charlie"}, "state": "APPROVED"},
+            {"user": {"login": "charlie"}, "state": "COMMENTED"},
+            {"user": {"login": "alice"}, "state": "CHANGES_REQUESTED"},
+            {"user": {"login": "dave"}, "state": "CHANGES_REQUESTED"},
+            {"user": {"login": "dave"}, "state": "APPROVED"},
+        ]
+        mock_resp.headers = {}
+        mock_resp.raise_for_status = Mock()
+        return mock_resp
+
+    monkeypatch.setattr(github_client.requests, "get", mock_get)
+
+    approvers = github_client.get_pr_approvers("org/repo", 1)
+    
+    assert "charlie" in approvers
+    assert "dave" in approvers
+    assert "alice" not in approvers
+    assert "bob" not in approvers
+    assert len(approvers) == 2

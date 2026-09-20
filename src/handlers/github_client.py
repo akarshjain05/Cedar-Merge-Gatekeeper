@@ -111,7 +111,7 @@ def get_pr_approvers(repo_name: str, pr_number: int) -> list[str]:
     base_url = os.environ.get("GITHUB_API_BASE_URL", "https://api.github.com")
     url = f"{base_url}/repos/{repo_name}/pulls/{pr_number}/reviews"
     
-    approvers = set()
+    user_latest_state = {}
     headers = {
         "Authorization": f"Bearer {_get_token()}",
         "Accept": "application/vnd.github.v3+json"
@@ -122,8 +122,17 @@ def get_pr_approvers(repo_name: str, pr_number: int) -> list[str]:
         response.raise_for_status()
         
         for review in response.json():
-            if review.get("state") == "APPROVED" and review.get("user"):
-                approvers.add(review["user"]["login"])
+            if review.get("user"):
+                username = review["user"]["login"]
+                state = review.get("state")
+                
+                # CRITICAL SECURITY FIX: Stale Approvals
+                # GitHub returns all reviews chronologically. We must track the LATEST effective
+                # state per user. If they approve, but later request changes or their review
+                # gets dismissed, we must revoke their approval. We ignore "COMMENTED" because
+                # leaving a comment doesn't revoke an existing approval.
+                if state in ["APPROVED", "CHANGES_REQUESTED", "DISMISSED"]:
+                    user_latest_state[username] = state
                 
         # Handle GitHub API pagination
         url = None
@@ -134,7 +143,8 @@ def get_pr_approvers(repo_name: str, pr_number: int) -> list[str]:
                     url = link[link.find("<")+1:link.find(">")]
                     break
                     
-    return list(approvers)
+    # Only return users whose absolute latest effective review is "APPROVED"
+    return [user for user, state in user_latest_state.items() if state == "APPROVED"]
 
 def get_pr_changed_files(repo_name: str, pr_number: int) -> list[str]:
     """Fetches all changed file paths for a PR, handling pagination."""
