@@ -29,7 +29,9 @@ The scope is deliberately narrow. That's the point: the live policy-edit-and-ref
 3. **General Engineers**: Can approve/merge anything outside of auth.
 4. **Large PRs**: Any PR changing >500 lines mandates a `senior-engineers` approval.
 5. **No Friday Merges**: Forbids Friday merges unless the PR is an explicit `isHotfix` AND the actor is a `senior-engineers` member.
-
+6. **Weekend Infra Freeze**: Forbids `/terraform/*` changes on Saturday and Sunday (unless senior hotfix).
+7. **Senior Break-Glass**: Permits `senior-engineers` to bypass path restrictions during a hotfix.
+8. **Infrastructure Lockdown**: strictly locks down `/terraform/*` to `senior-engineers` 24/7.
 ## Learning
 
 Coming into this build from a mostly FastAPI/PostgreSQL/Docker background, most of this stack was new ground:
