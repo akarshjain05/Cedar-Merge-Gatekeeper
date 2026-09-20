@@ -120,6 +120,17 @@
             const tbody = document.getElementById('decision-feed');
             tbody.innerHTML = '';
 
+            // CRITICAL SECURITY FIX: XSS Sanitization
+            // Prevents malicious GitHub usernames or PR titles from executing arbitrary JS in the dashboard.
+            const escapeHtml = (unsafe) => {
+                return (unsafe || '-').toString()
+                     .replace(/&/g, "&amp;")
+                     .replace(/</g, "&lt;")
+                     .replace(/>/g, "&gt;")
+                     .replace(/"/g, "&quot;")
+                     .replace(/'/g, "&#039;");
+             };
+
             decisions.forEach(d => {
                 // Update stats
                 if (d.verdict === 'ALLOW') allowed++;
@@ -143,9 +154,9 @@
 
                 row.innerHTML = `
                     <td class="py-3">${verdictBadge}</td>
-                    <td class="py-3 font-medium text-slate-700">${d.principal || '-'}</td>
-                    <td class="py-3 text-slate-500">${d.resource || '-'}</td>
-                    <td class="py-3"><code class="text-xs bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded border border-slate-200">${d.policyId || 'unknown'}</code></td>
+                    <td class="py-3 font-medium text-slate-700">${escapeHtml(d.principal)}</td>
+                    <td class="py-3 text-slate-500">${escapeHtml(d.resource)}</td>
+                    <td class="py-3"><code class="text-xs bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded border border-slate-200">${escapeHtml(d.policyId)}</code></td>
                     <td class="py-3 text-slate-400">${timeStr}</td>
                 `;
                 tbody.appendChild(row);
