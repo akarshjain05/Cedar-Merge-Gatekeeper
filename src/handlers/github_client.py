@@ -7,25 +7,31 @@ import json
 import boto3
 import requests
 
+import time
+
 _cached_token = None
+_token_fetch_time = 0
 _cached_webhook_secret = None
+_webhook_secret_fetch_time = 0
+CACHE_TTL = 300 # 5 minutes
 
 def _get_token() -> str:
-    global _cached_token
-    if _cached_token is None:
+    global _cached_token, _token_fetch_time
+    if _cached_token is None or (time.time() - _token_fetch_time > CACHE_TTL):
         client = boto3.client("secretsmanager")
         secret = client.get_secret_value(SecretId=os.environ["GITHUB_TOKEN_SECRET_ARN"])
         _cached_token = json.loads(secret["SecretString"])["token"]
+        _token_fetch_time = time.time()
     return _cached_token
 
 def get_webhook_secret() -> str:
-    global _cached_webhook_secret
-    if _cached_webhook_secret is None:
+    global _cached_webhook_secret, _webhook_secret_fetch_time
+    if _cached_webhook_secret is None or (time.time() - _webhook_secret_fetch_time > CACHE_TTL):
         client = boto3.client("secretsmanager")
         secret = client.get_secret_value(SecretId=os.environ["GITHUB_WEBHOOK_SECRET_ARN"])
         _cached_webhook_secret = json.loads(secret["SecretString"])["secret"]
+        _webhook_secret_fetch_time = time.time()
     return _cached_webhook_secret
-
 
 def set_commit_status(repo_name: str, head_sha: str, allowed: bool, reason: str) -> None:
     base_url = os.environ.get("GITHUB_API_BASE_URL", "https://api.github.com")

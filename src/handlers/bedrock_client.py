@@ -15,7 +15,7 @@ def _get_client():
 
 def generate_explanation(principal: str, policy_id: str, changed_path: str, lines_changed: int, decision: str) -> str:
     """
-    Uses Anthropic Claude 3 Haiku via Amazon Bedrock to generate a friendly, 
+    Uses Amazon Nova Lite via Amazon Bedrock to generate a friendly, 
     helpful explanation for why a PR merge was allowed or denied based on the Cedar policy.
     """
     
