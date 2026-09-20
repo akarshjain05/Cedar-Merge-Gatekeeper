@@ -32,7 +32,7 @@ Resources:
       Cors:
         AllowMethods: "'GET,POST,OPTIONS'"
         AllowHeaders: "'Content-Type,X-Hub-Signature-256'"
-        AllowOrigin: "'*'"
+        AllowOrigin: "'https://main.d3ofi8gfbpsdj6.amplifyapp.com'"
 
   WebhookFunction:
     Type: AWS::Serverless::Function
