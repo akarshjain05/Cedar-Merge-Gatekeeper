@@ -48,6 +48,10 @@ def fake_is_authorized(policy_store_id, principal_id, action_id, resource_id, co
     if is_large_pr and "senior-engineers" not in active_teams:
         return {"allowed": False, "policy_ids": ["large-pr-requires-senior"], "errors": []}
 
+    # Rule 8 (forbid): Infrastructure code requires senior engineers 24/7
+    if is_infra_path and "senior-engineers" not in active_teams:
+        return {"allowed": False, "policy_ids": ["infra-requires-senior"], "errors": []}
+
     # Rule 7 (permit): Senior Break-Glass (Hotfix)
     if is_hotfix and "senior-engineers" in active_teams:
         return {"allowed": True, "policy_ids": ["senior-break-glass"], "errors": []}

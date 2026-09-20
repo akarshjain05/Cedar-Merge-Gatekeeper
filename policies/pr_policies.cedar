@@ -72,3 +72,15 @@ when {
   context.activeTeams.contains("senior-engineers") &&
   context.isHotfix == true
 };
+
+// Rule 8: Infrastructure Lockdown
+// Terraform/infra code can ONLY be approved by senior engineers, regardless of day.
+forbid (
+  principal,
+  action in [CedarGatekeeper::Action::"approvePR", CedarGatekeeper::Action::"mergePR"],
+  resource
+)
+when {
+  context.changedPath like "/terraform/*" &&
+  !(context.activeTeams.contains("senior-engineers"))
+};
