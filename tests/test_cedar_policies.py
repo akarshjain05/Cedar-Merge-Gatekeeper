@@ -81,3 +81,91 @@ def test_forbid_overrides_permit():
     # Cedar evaluation dictates Forbid always overrides Permit.
     result = cedarpy.is_authorized(request, policies, "[]", schema)
     assert result.decision == cedarpy.Decision.Deny
+
+def test_weekend_infrastructure_freeze():
+    policies, schema = load_cedar()
+    request = {
+        "principal": 'CedarGatekeeper::GitHubUser::"vikash"',
+        "action": 'CedarGatekeeper::Action::"approvePR"',
+        "resource": 'CedarGatekeeper::PullRequest::"repo#1"',
+        "context": {
+            "changedPath": "/terraform/main.tf",
+            "totalLinesChanged": 50,
+            "prAuthor": {"__entity": {"type": "CedarGatekeeper::GitHubUser", "id": "alice"}},
+            "activeTeams": ["senior-engineers"],
+            "dayOfWeek": "Saturday",
+            "isHotfix": False
+        }
+    }
+    # Senior engineer cannot modify terraform on weekend if not hotfix
+    assert cedarpy.is_authorized(request, policies, "[]", schema).decision == cedarpy.Decision.Deny
+    
+    # Senior engineer CAN modify terraform on weekend if hotfix
+    request["context"]["isHotfix"] = True
+    assert cedarpy.is_authorized(request, policies, "[]", schema).decision == cedarpy.Decision.Allow
+
+def test_infrastructure_lockdown():
+    policies, schema = load_cedar()
+    request = {
+        "principal": 'CedarGatekeeper::GitHubUser::"bob"',
+        "action": 'CedarGatekeeper::Action::"approvePR"',
+        "resource": 'CedarGatekeeper::PullRequest::"repo#1"',
+        "context": {
+            "changedPath": "/terraform/main.tf",
+            "totalLinesChanged": 50,
+            "prAuthor": {"__entity": {"type": "CedarGatekeeper::GitHubUser", "id": "alice"}},
+            "activeTeams": ["engineering-core"],
+            "dayOfWeek": "Wednesday",
+            "isHotfix": False
+        }
+    }
+    # Core engineer cannot modify terraform on Wednesday
+    assert cedarpy.is_authorized(request, policies, "[]", schema).decision == cedarpy.Decision.Deny
+    
+    # Senior engineer CAN modify terraform on Wednesday
+    request["context"]["activeTeams"] = ["senior-engineers"]
+    assert cedarpy.is_authorized(request, policies, "[]", schema).decision == cedarpy.Decision.Allow
+
+def test_large_pr_boundary():
+    policies, schema = load_cedar()
+    request = {
+        "principal": 'CedarGatekeeper::GitHubUser::"bob"',
+        "action": 'CedarGatekeeper::Action::"approvePR"',
+        "resource": 'CedarGatekeeper::PullRequest::"repo#1"',
+        "context": {
+            "changedPath": "/src/main.py",
+            "totalLinesChanged": 500,
+            "prAuthor": {"__entity": {"type": "CedarGatekeeper::GitHubUser", "id": "alice"}},
+            "activeTeams": ["engineering-core"],
+            "dayOfWeek": "Wednesday",
+            "isHotfix": False
+        }
+    }
+    # Exactly 500 is ALLOWED
+    assert cedarpy.is_authorized(request, policies, "[]", schema).decision == cedarpy.Decision.Allow
+    
+    # 501 is DENIED for core engineer
+    request["context"]["totalLinesChanged"] = 501
+    assert cedarpy.is_authorized(request, policies, "[]", schema).decision == cedarpy.Decision.Deny
+    
+    # 501 is ALLOWED for senior engineer
+    request["context"]["activeTeams"] = ["senior-engineers"]
+    assert cedarpy.is_authorized(request, policies, "[]", schema).decision == cedarpy.Decision.Allow
+
+def test_break_glass_auth_override():
+    policies, schema = load_cedar()
+    request = {
+        "principal": 'CedarGatekeeper::GitHubUser::"vikash"',
+        "action": 'CedarGatekeeper::Action::"approvePR"',
+        "resource": 'CedarGatekeeper::PullRequest::"repo#1"',
+        "context": {
+            "changedPath": "/src/auth/login.py",
+            "totalLinesChanged": 10,
+            "prAuthor": {"__entity": {"type": "CedarGatekeeper::GitHubUser", "id": "alice"}},
+            "activeTeams": ["senior-engineers"],
+            "dayOfWeek": "Wednesday",
+            "isHotfix": True
+        }
+    }
+    # Senior engineer CAN override auth path via hotfix (Rule 7)
+    assert cedarpy.is_authorized(request, policies, "[]", schema).decision == cedarpy.Decision.Allow
