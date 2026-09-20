@@ -9,15 +9,19 @@ store_id = [opt['OutputValue'] for opt in stacks['Stacks'][0]['Outputs'] if opt[
 with open('policies/pr_policies.cedar') as f:
     policies_str = f.read()
 
-# We can match the comment above the rule and the rule itself
-matches = re.finditer(r'// (Rule \d+:.*?)\n(permit.*?};|forbid.*?};)', policies_str, re.MULTILINE | re.DOTALL)
+# CRITICAL FIX: Regex Fragility
+# The previous regex only matched rules explicitly starting with "// Rule N:"
+# and ignored multi-line comments. This new regex captures all consecutive
+# comment lines directly above any permit/forbid block.
+matches = re.finditer(r'((?://.*?\n)+)(permit.*?};|forbid.*?};)', policies_str, re.MULTILINE | re.DOTALL)
 
 for page in client.get_paginator('list_policies').paginate(policyStoreId=store_id):
     for p in page.get('policies', []):
         client.delete_policy(policyStoreId=store_id, policyId=p['policyId'])
 
 for m in matches:
-    desc = m.group(1).strip()
+    # Remove all '// ' prefixes from the captured comment block and strip whitespace
+    desc = re.sub(r'//\s*', '', m.group(1)).strip()
     rule = m.group(2).strip()
     try:
         client.create_policy(
