@@ -65,28 +65,28 @@ flowchart TD
     
     %% AWS Services
     SM[(AWS Secrets Manager)]:::aws
-    Lambda -- "Validates HMAC" --> SM
+    Lambda <-->|"Validates HMAC"| SM
     
     DBCore[(DynamoDB Members)]:::aws
-    Lambda -- "Fetch Team Membership" --> DBCore
+    Lambda <-->|"Fetch Team Membership"| DBCore
     
     AVP{AWS Verified Permissions}:::aws
-    Lambda -- "Evaluate Cedar Policies" --> AVP
+    Lambda <-->|"Evaluate Cedar Policies"| AVP
     
     Bedrock[Amazon Bedrock AI]:::aws
-    Lambda -- "Generate Explanation" --> Bedrock
+    Lambda <-->|"Generate Explanation"| Bedrock
     
     DBLog[(DynamoDB Decisions)]:::aws
-    Lambda -- "Log Decision" --> DBLog
+    Lambda -->|"Log Decision"| DBLog
     
     %% Feedback Loop
-    Lambda -- "POST Commit Status\n& PR Comment" --> GH
+    Lambda -->|"POST Commit Status\n& PR Comment"| GH
     
     %% Dashboard
     Amplify[AWS Amplify Hosted UI]:::frontend
     DashAPI[Dashboard API Lambda]:::aws
-    Amplify -- "Fetch Metrics" --> DashAPI
-    DashAPI -- "Query Logs" --> DBLog
+    Amplify <-->|"Fetch Metrics"| DashAPI
+    DashAPI <-->|"Query Logs"| DBLog
 ```
 
 1. **GitHub** sends a webhook event (PR or Review) to an **API Gateway**.
